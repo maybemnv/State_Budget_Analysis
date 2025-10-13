@@ -456,7 +456,7 @@ class MLAnalyzer:
                     
                     # Calculate metrics
                     accuracy = accuracy_score(y_test, y_pred)
-                    class_report = classification_report(y_test, y_pred, output_dict=True)
+                    class_report = classification_report(y_test, y_pred, output_dict=True,zero_division=0)
                     
                     # Feature importance
                     feature_importance = pd.DataFrame({
@@ -562,5 +562,4 @@ class MLAnalyzer:
             plots['class_report'] = fig_report
             
             return plots
-        
         return None

@@ -11,6 +11,7 @@ from visualizer import Visualizer
 from statistical_analyzer import StatisticalAnalyzer
 from ml_analyzer import MLAnalyzer
 from gemini_analyzer import GeminiAnalyzer
+from time_series_analyzer import TimeSeriesAnalyzer
 
 # Set page configuration
 st.set_page_config(
@@ -53,6 +54,7 @@ visualizer = Visualizer(data_loader)
 statistical_analyzer = StatisticalAnalyzer(data_loader)
 ml_analyzer = MLAnalyzer(data_loader)
 gemini_analyzer = GeminiAnalyzer(data_loader)
+time_series_analyzer = TimeSeriesAnalyzer()
 
 # Main header
 st.markdown('<h1 class="main-header">CSV Data Analyzer</h1>', unsafe_allow_html=True)
@@ -77,13 +79,14 @@ with st.sidebar:
 # Main content area
 if data_loader.get_data() is not None:
     # Display tabs for different analysis options
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         [
             "📊 Overview",
             "📈 Visualizations",
             "🧮 Statistical Analysis",
             "🤖 ML Insights",
             "🧠 Gemini AI Analysis",
+            "📅 Time Series Analysis",
         ]
     )
 
@@ -635,6 +638,142 @@ if data_loader.get_data() is not None:
         st.markdown(
             '<h2 class="sub-header">Gemini AI Analysis</h2>', unsafe_allow_html=True
         )
+        
+    # Tab 6: Time Series Analysis
+    with tab6:
+        st.markdown('<h2 class="sub-header">Time Series Analysis</h2>', unsafe_allow_html=True)
+        
+        # Get datetime columns
+        datetime_cols = data_loader.get_data().select_dtypes(include=['datetime64']).columns.tolist()
+        
+        if not datetime_cols:
+            st.warning("No datetime columns detected. Please ensure your time series data has a properly formatted date/time column.")
+        else:
+            # Select date column
+            date_col = st.selectbox("Select Date Column:", datetime_cols)
+            
+            # Select value column
+            value_col = st.selectbox("Select Value Column:", numeric_cols)
+            
+            if st.button("Run Time Series Analysis"):
+                with st.spinner("Analyzing time series data..."):
+                    # Prepare data
+                    series = time_series_analyzer.load_and_prepare_data(
+                        data_loader.get_data(), date_col, value_col
+                    )
+                    
+                    # Create tabs for different analyses
+                    ts_tab1, ts_tab2, ts_tab3 = st.tabs([
+                        "Decomposition Analysis",
+                        "Stationarity Test",
+                        "Forecasting"
+                    ])
+                    
+                    # Tab 1: Decomposition Analysis
+                    with ts_tab1:
+                        st.markdown("### Time Series Decomposition")
+                        decomp_fig = time_series_analyzer.decompose_series(series)
+                        st.plotly_chart(decomp_fig, use_container_width=True)
+                    
+                    # Tab 2: Stationarity Test
+                    with ts_tab2:
+                        st.markdown("### Stationarity Analysis")
+                        stationarity_results = time_series_analyzer.check_stationarity(series)
+                        
+                        st.write("**Augmented Dickey-Fuller Test Results:**")
+                        st.write(f"Test Statistic: {stationarity_results['test_statistic']:.4f}")
+                        st.write(f"p-value: {stationarity_results['p_value']:.4f}")
+                        
+                        st.write("\n**Critical Values:**")
+                        for key, value in stationarity_results['critical_values'].items():
+                            st.write(f"{key}: {value:.4f}")
+                            
+                        # Interpretation
+                        if stationarity_results['p_value'] < 0.05:
+                            st.success("The time series is stationary (rejects the null hypothesis)")
+                        else:
+                            st.warning("The time series is non-stationary (fails to reject the null hypothesis)")
+                    
+                    # Tab 3: Forecasting
+                    with ts_tab3:
+                        st.markdown("### Time Series Forecasting")
+                        
+                        # Select forecasting method
+                        method = st.radio("Select Forecasting Method:", ["ARIMA", "Prophet"])
+                        
+                        # Number of periods to forecast
+                        periods = st.slider("Forecast Periods (months):", 1, 24, 12)
+                        
+                        if method == "ARIMA":
+                            # ARIMA parameters
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                p = st.number_input("AR(p)", 0, 5, 1)
+                            with col2:
+                                d = st.number_input("I(d)", 0, 2, 1)
+                            with col3:
+                                q = st.number_input("MA(q)", 0, 5, 1)
+                                
+                            if st.button("Generate ARIMA Forecast"):
+                                with st.spinner("Generating forecast..."):
+                                    # Fit ARIMA model
+                                    model = time_series_analyzer.fit_arima(series, order=(p,d,q))
+                                    forecast = time_series_analyzer.forecast_arima(steps=periods)
+                                    
+                                    # Create forecast dataframe
+                                    forecast_index = pd.date_range(
+                                        start=series.index[-1],
+                                        periods=periods+1,
+                                        freq='M'
+                                    )[1:]
+                                    forecast_df = pd.DataFrame({
+                                        'ds': forecast_index,
+                                        'yhat': forecast,
+                                        'yhat_lower': forecast - 1.96 * model.cov_params().mean(),
+                                        'yhat_upper': forecast + 1.96 * model.cov_params().mean()
+                                    })
+                                    
+                                    # Plot forecast
+                                    fig = time_series_analyzer.plot_forecast(
+                                        series, 
+                                        forecast_df,
+                                        "ARIMA Forecast"
+                                    )
+                                    st.plotly_chart(fig, use_container_width=True)
+                                    
+                        else:  # Prophet
+                            if st.button("Generate Prophet Forecast"):
+                                with st.spinner("Generating forecast..."):
+                                    # Fit Prophet model and generate forecast
+                                    forecast_df = time_series_analyzer.fit_prophet(series, periods)
+                                    
+                                    # Plot forecast
+                                    fig = time_series_analyzer.plot_forecast(
+                                        series, 
+                                        forecast_df,
+                                        "Prophet Forecast"
+                                    )
+                                    st.plotly_chart(fig, use_container_width=True)
+                                    
+                                    # Show forecast components
+                                    st.markdown("### Forecast Components")
+                                    components = [
+                                        go.Scatter(
+                                            x=forecast_df['ds'],
+                                            y=forecast_df[col],
+                                            name=col
+                                        )
+                                        for col in ['trend', 'yearly', 'weekly']
+                                        if col in forecast_df.columns
+                                    ]
+                                    
+                                    fig = go.Figure(data=components)
+                                    fig.update_layout(
+                                        title="Forecast Components",
+                                        xaxis_title="Date",
+                                        yaxis_title="Value"
+                                    )
+                                    st.plotly_chart(fig, use_container_width=True)
 
         if not gemini_analyzer.is_configured():
             st.warning(
