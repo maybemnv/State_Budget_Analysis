@@ -11,7 +11,8 @@ from visualizer import Visualizer
 from statistical_analyzer import StatisticalAnalyzer
 from ml_analyzer import MLAnalyzer
 from gemini_analyzer import GeminiAnalyzer
-from time_series_analyzer import TimeSeriesAnalyzer
+from src.time_series.analyzer import TimeSeriesAnalyzer
+from src.time_series.stationarity import make_stationary
 
 # Set page configuration
 st.set_page_config(
@@ -689,353 +690,144 @@ if data_loader.get_data() is not None:
     # Tab 6: Time Series Analysis
     with tab6:
         st.markdown('<h2 class="sub-header">Time Series Analysis</h2>', unsafe_allow_html=True)
-        
         st.markdown(
-            '<div class="info-text">Analyze time series data with automatic frequency detection, decomposition, stationarity testing, and forecasting. '
-            'Works with date columns, year columns (2019, 2020...), or any sequential data!</div>',
+            '<div class="info-text">Analyze time series with a clean, unified flow: prepare your series, then Analyze, Forecast, or check Stationarity. Works with date columns, year columns, or sequential data.</div>',
             unsafe_allow_html=True,
         )
-        
-        # Detect what kind of time series data we have
-        ts_capabilities = time_series_analyzer.detect_time_series_capable_data(data_loader.get_data())
-        
-        # Setup section
-        st.markdown("### ⚙️ Setup Time Series Data")
-        
-        # Determine data mode
-        data_modes = []
-        if ts_capabilities['has_date_columns']:
-            data_modes.append("📅 Use Date Column")
-        if ts_capabilities['has_year_columns']:
-            data_modes.append("📊 Use Year Columns (Financial Data)")
-        if ts_capabilities['numeric_columns']:
-            data_modes.append("🔢 Use Sequential Data (Create Synthetic Dates)")
-        
-        if not data_modes:
-            st.error(
-                "❌ No time series capable data detected. Your data needs either:\n\n"
-                "1. A date/time column\n"
-                "2. Year columns (2019, 2020, 2021, etc.)\n"
-                "3. Numeric columns with sequential data"
-            )
+
+        analyzer = TimeSeriesAnalyzer()
+        df = data_loader.get_data()
+
+        # Setup: choose mode and prepare series
+        ts_cap = analyzer.detect_time_series_capable_data(df)
+        modes = []
+        if ts_cap['has_date_columns']:
+            modes.append("📅 Date Column")
+        if ts_cap['has_year_columns']:
+            modes.append("📊 Year Columns (Wide → Long)")
+        if len(ts_cap['numeric_columns']) > 0:
+            modes.append("🔢 Sequential (Synthetic Dates)")
+
+        if not modes:
+            st.error("No time-series capable data detected. Provide a date column, year columns, or a numeric column.")
         else:
-            # Select date column
-            date_col = st.selectbox(
-                "Select Date Column:",
-                potential_date_cols,
-                help="Choose the column containing dates/timestamps"
-            )
-            
-            # Select value column
-            value_col = st.selectbox(
-                "Select Value Column:",
-                numeric_cols,
-                help="Choose the numeric column to analyze over time"
-            )
-            
-            if st.button("🚀 Run Time Series Analysis", type="primary"):
-                try:
-                    with st.spinner("🔄 Preparing and cleaning time series data..."):
-                        # Prepare data
-                        series = time_series_analyzer.load_and_prepare_data(
-                            data_loader.get_data(), date_col, value_col
-                        )
-                    
-                    # Show data info
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Data Points", len(series))
-                    with col2:
-                        st.metric("Frequency", time_series_analyzer.frequency or "Unknown")
-                    with col3:
-                        date_range = f"{series.index.min().date()} to {series.index.max().date()}"
-                        st.metric("Date Range", "")
-                        st.caption(date_range)
-                    
-                    st.success("✅ Data prepared successfully!")
-                    
-                    # Create tabs for different analyses
-                    ts_tab1, ts_tab2, ts_tab3 = st.tabs([
-                        "📊 Decomposition",
-                        "📈 Stationarity",
-                        "🔮 Forecasting"
-                    ])
-                    
-                    # Tab 1: Decomposition Analysis
-                    with ts_tab1:
-                        st.markdown("### Time Series Decomposition")
-                        st.info(
-                            "Decomposition breaks down the time series into trend, seasonal, and residual components."
-                        )
-                        
+            st.markdown("### ⚙️ Setup Time Series Data")
+            mode = st.radio("Data Mode", options=modes)
+
+            prepared_series = None
+            if mode == "📅 Date Column":
+                date_col = st.selectbox("Date column", ts_cap['date_columns'])
+                value_col = st.selectbox("Value column", ts_cap['numeric_columns'])
+                if st.button("Prepare Series", type="primary"):
+                    try:
+                        prepared_series = analyzer.load_and_prepare(df, date_col, value_col)
+                        st.success("Series prepared")
+                    except Exception as e:
+                        st.error(str(e))
+            elif mode == "📊 Year Columns (Wide → Long)":
+                year_like = [c for c in df.columns if str(c).strip().isdigit()]
+                year_cols = st.multiselect("Year columns", year_like, default=year_like[:min(5, len(year_like))])
+                selector = st.text_input("Row selector (optional)")
+                if st.button("Prepare Series", type="primary"):
+                    series, err = analyzer.create_time_series_from_year_columns(df, year_cols, selector or None)
+                    if err:
+                        st.error(err)
+                    else:
+                        prepared_series = series
+                        st.success("Series prepared")
+            else:  # Sequential
+                value_col = st.selectbox("Value column", ts_cap['numeric_columns'])
+                freq = st.selectbox("Frequency", ["D", "W", "M", "Q", "Y"], index=2)
+                start_date = st.date_input("Start date", pd.to_datetime("2000-01-01")).strftime("%Y-%m-%d")
+                if st.button("Prepare Series", type="primary"):
+                    series, err = analyzer.create_time_series_from_sequential(df, value_col, freq=freq, start_date=start_date)
+                    if err:
+                        st.error(err)
+                    else:
+                        prepared_series = series
+                        st.success("Series prepared")
+
+            if prepared_series is not None:
+                st.markdown("---")
+                tab_analyze, tab_forecast, tab_stationarity = st.tabs(["📈 Analyze", "🔮 Forecast", "📊 Stationarity"]) 
+
+                with tab_analyze:
+                    st.subheader("Decomposition")
+                    model = st.selectbox("Model", ["additive", "multiplicative"], index=0)
+                    if st.button("Run Decomposition"):
                         with st.spinner("Decomposing time series..."):
-                            decomp_fig, error = time_series_analyzer.decompose_series(series)
-                        
-                        if error:
-                            st.error(f"❌ {error}")
-                            if "Insufficient data" in error:
-                                st.info(
-                                    "💡 **Tip:** Decomposition requires at least 2 full periods of data. "
-                                    "For monthly data, you need at least 24 months."
-                                )
-                        else:
-                            st.plotly_chart(decomp_fig, use_container_width=True)
-                    
-                    # Tab 2: Stationarity Test
-                    with ts_tab2:
-                        st.markdown("### Stationarity Analysis")
-                        st.info(
-                            "Stationarity test checks if the statistical properties of the series remain constant over time. "
-                            "Stationary data is important for many forecasting models."
-                        )
-                        
-                        with st.spinner("Running stationarity test..."):
-                            stationarity_results, error = time_series_analyzer.check_stationarity(series)
-                        
-                        if error:
-                            st.error(f"❌ {error}")
-                        else:
-                            st.write("**Augmented Dickey-Fuller Test Results:**")
-                            
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                st.metric("Test Statistic", f"{stationarity_results['test_statistic']:.4f}")
-                            with col2:
-                                st.metric("p-value", f"{stationarity_results['p_value']:.4f}")
-                            
-                            st.write("\n**Critical Values:**")
-                            crit_cols = st.columns(len(stationarity_results['critical_values']))
-                            for idx, (key, value) in enumerate(stationarity_results['critical_values'].items()):
-                                with crit_cols[idx]:
-                                    st.metric(key, f"{value:.4f}")
-                                
-                            # Interpretation
-                            st.markdown("---")
-                            if stationarity_results['is_stationary']:
-                                st.success(
-                                    "✅ **The time series is STATIONARY** (p-value < 0.05)\n\n"
-                                    "This means the series has constant mean and variance over time, "
-                                    "making it suitable for most forecasting models."
-                                )
-                            else:
-                                st.warning(
-                                    "⚠️ **The time series is NON-STATIONARY** (p-value ≥ 0.05)\n\n"
-                                    "This means the statistical properties change over time. "
-                                    "Consider differencing or transformation before forecasting."
-                                )
-                    
-                    # Tab 3: Forecasting
-                    with ts_tab3:
-                        st.markdown("### Time Series Forecasting")
-                        st.info(
-                            "Forecast future values based on historical patterns. "
-                            "**ARIMA** is good for stationary data, while **Prophet** handles seasonality and trends automatically."
-                        )
-                        
-                        # Select forecasting method
-                        col1, col2 = st.columns([1, 2])
-                        with col1:
-                            method = st.radio(
-                                "Forecasting Method:",
-                                ["Prophet", "ARIMA"],
-                                help="Prophet is more robust and handles missing data better. ARIMA gives more control."
-                            )
-                        with col2:
-                            # Number of periods to forecast
-                            freq_label = "periods"
-                            if time_series_analyzer.frequency:
-                                freq_map = {'D': 'days', 'W': 'weeks', 'M': 'months', 'Q': 'quarters', 'Y': 'years'}
-                                freq_label = freq_map.get(time_series_analyzer.frequency, 'periods')
-                            
-                            periods = st.slider(
-                                f"Forecast {freq_label}:",
-                                min_value=1,
-                                max_value=min(48, len(series)),
-                                value=min(12, len(series) // 4),
-                                help=f"Number of {freq_label} to predict into the future"
-                            )
-                        
-                        if method == "ARIMA":
-                            # ARIMA parameters
-                            st.markdown("**ARIMA Parameters:**")
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                p = st.number_input(
-                                    "AR(p)",
-                                    min_value=0,
-                                    max_value=5,
-                                    value=1,
-                                    help="Autoregressive order - number of lag observations"
-                                )
-                            with col2:
-                                d = st.number_input(
-                                    "I(d)",
-                                    min_value=0,
-                                    max_value=2,
-                                    value=1,
-                                    help="Degree of differencing - number of times to difference the series"
-                                )
-                            with col3:
-                                q = st.number_input(
-                                    "MA(q)",
-                                    min_value=0,
-                                    max_value=5,
-                                    value=1,
-                                    help="Moving average order - size of the moving average window"
-                                )
-                            
-                            st.caption("💡 Common starting points: (1,1,1) for non-stationary data, (1,0,1) for stationary data")
-                                
-                            if st.button("🚀 Generate ARIMA Forecast", type="primary"):
-                                with st.spinner(f"Training ARIMA({p},{d},{q}) model and generating forecast..."):
-                                    # Fit ARIMA model
-                                    model, error = time_series_analyzer.fit_arima(series, order=(p,d,q))
-                                    
-                                    if error:
-                                        st.error(f"❌ {error}")
-                                        st.info(
-                                            "💡 **Tips:**\n"
-                                            "- Try different parameter combinations\n"
-                                            "- Ensure you have enough data points\n"
-                                            "- Check if your data needs differencing (use I(d)=1 or 2)"
-                                        )
+                            try:
+                                result = analyzer.decompose_series(prepared_series, model=model)
+                                st.plotly_chart(result['plot'], use_container_width=True)
+                            except Exception as e:
+                                st.error(str(e))
+
+                with tab_stationarity:
+                    st.subheader("Stationarity Tests")
+                    if st.button("Run Tests"):
+                        with st.spinner("Running ADF/KPSS..."):
+                            try:
+                                res = analyzer.check_stationarity(prepared_series)
+                                c1, c2 = st.columns(2)
+                                with c1:
+                                    st.metric("ADF p-value", f"{res['p_value']:.4f}")
+                                with c2:
+                                    st.write("Critical Values:")
+                                    st.write({k: float(v) for k, v in res['critical_values'].items()})
+                                st.success("Stationary" if res['is_stationary'] else "Non-stationary")
+                            except Exception as e:
+                                st.error(str(e))
+
+                    st.markdown("#### Transform if needed")
+                    method_label = st.selectbox("Transformation", ["Differencing", "Log Transform", "Log + Differencing", "Percent Change"], index=0)
+                    method_map = {"Differencing": "diff", "Log Transform": "log", "Log + Differencing": "log_diff", "Percent Change": "pct_change"}
+                    if st.button("Apply Transformation"):
+                        try:
+                            transformed, _ = make_stationary(prepared_series, method=method_map[method_label], periods=1)
+                            st.line_chart(pd.DataFrame({"Original": prepared_series, "Transformed": transformed}))
+                            st.session_state.transformed_series = transformed
+                            st.session_state.is_transformed = True
+                        except Exception as e:
+                            st.error(str(e))
+
+                with tab_forecast:
+                    st.subheader("Forecasting")
+                    model_choice = st.radio("Model", ["ARIMA", "Prophet"], horizontal=True)
+                    steps = st.number_input("Forecast periods", min_value=1, max_value=60, value=12)
+                    if st.button("Generate Forecast", type="primary"):
+                        try:
+                            working = st.session_state.get('transformed_series', prepared_series)
+                            if model_choice == "ARIMA":
+                                fit = analyzer.fit_arima(working, order=(1, 1, 1))
+                                if not fit['success']:
+                                    st.error(fit['message'])
+                                else:
+                                    fc = analyzer.forecast_arima(fit['model'], steps=steps)
+                                    if not fc['success']:
+                                        st.error(fc['message'])
                                     else:
-                                        forecast, forecast_error = time_series_analyzer.forecast_arima(steps=periods)
-                                        
-                                        if forecast_error:
-                                            st.error(f"❌ {forecast_error}")
-                                        else:
-                                            # Determine frequency
-                                            freq = time_series_analyzer.frequency or 'M'
-                                            
-                                            # Create forecast dataframe
-                                            forecast_index = pd.date_range(
-                                                start=series.index[-1],
-                                                periods=periods+1,
-                                                freq=freq
-                                            )[1:]
-                                            
-                                            # Calculate confidence intervals
-                                            forecast_stderr = model.forecast(steps=periods, alpha=0.05)
-                                            if hasattr(forecast_stderr, 'conf_int'):
-                                                conf_int = forecast_stderr.conf_int()
-                                                lower = conf_int[:, 0]
-                                                upper = conf_int[:, 1]
-                                            else:
-                                                # Fallback to simple stderr estimation
-                                                stderr = np.std(series) * 1.96
-                                                lower = forecast - stderr
-                                                upper = forecast + stderr
-                                            
-                                            forecast_df = pd.DataFrame({
-                                                'ds': forecast_index,
-                                                'yhat': forecast,
-                                                'yhat_lower': lower,
-                                                'yhat_upper': upper
-                                            })
-                                            
-                                            # Plot forecast
-                                            fig = time_series_analyzer.plot_forecast(
-                                                series, 
-                                                forecast_df,
-                                                f"ARIMA({p},{d},{q}) Forecast"
-                                            )
-                                            st.plotly_chart(fig, use_container_width=True)
-                                            
-                                            # Show model summary
-                                            with st.expander("📊 View Model Summary"):
-                                                st.text(model.summary())
-                                            
-                                            # Download forecast
-                                            csv = forecast_df.to_csv(index=False)
-                                            st.download_button(
-                                                label="💾 Download Forecast Data",
-                                                data=csv,
-                                                file_name="arima_forecast.csv",
-                                                mime="text/csv"
-                                            )
-                                    
-                        else:  # Prophet
-                            st.markdown(
-                                "**Prophet Forecast:** Prophet automatically handles seasonality, "
-                                "holidays, and missing data. No parameter tuning required!"
-                            )
-                            
-                            if st.button("🚀 Generate Prophet Forecast", type="primary"):
-                                with st.spinner("Training Prophet model and generating forecast..."):
-                                    # Fit Prophet model and generate forecast
-                                    forecast_df, error = time_series_analyzer.fit_prophet(series, periods)
-                                    
-                                    if error:
-                                        st.error(f"❌ {error}")
-                                        st.info(
-                                            "💡 **Tips:**\n"
-                                            "- Ensure you have enough data points (at least 10)\n"
-                                            "- Check that your date column is properly formatted\n"
-                                            "- Prophet works best with daily or monthly data"
-                                        )
-                                    else:
-                                        # Plot forecast
-                                        fig = time_series_analyzer.plot_forecast(
-                                            series, 
-                                            forecast_df,
-                                            "Prophet Forecast"
-                                        )
+                                        last = working.index[-1]
+                                        freq = pd.infer_freq(working.index) or 'M'
+                                        idx = pd.date_range(start=last, periods=steps+1, freq=freq)[1:]
+                                        yhat = pd.Series(fc['forecast']['forecast'].values, index=idx)
+                                        fig = analyzer.plot_forecast(working, yhat, fc['forecast'][['lower', 'upper']])
                                         st.plotly_chart(fig, use_container_width=True)
-                                        
-                                        # Show forecast components
-                                        st.markdown("### Forecast Components")
-                                        st.caption("Prophet decomposes the forecast into trend and seasonal components")
-                                        
-                                        # Create components plot
-                                        component_cols = ['trend']
-                                        for col in ['yearly', 'weekly', 'daily']:
-                                            if col in forecast_df.columns:
-                                                component_cols.append(col)
-                                        
-                                        if len(component_cols) > 0:
-                                            fig_components = make_subplots(
-                                                rows=len(component_cols),
-                                                cols=1,
-                                                subplot_titles=[c.title() for c in component_cols]
-                                            )
-                                            
-                                            for idx, col in enumerate(component_cols, 1):
-                                                fig_components.add_trace(
-                                                    go.Scatter(
-                                                        x=forecast_df['ds'],
-                                                        y=forecast_df[col],
-                                                        name=col.title(),
-                                                        line=dict(color='blue')
-                                                    ),
-                                                    row=idx,
-                                                    col=1
-                                                )
-                                            
-                                            fig_components.update_layout(
-                                                height=300 * len(component_cols),
-                                                showlegend=False
-                                            )
-                                            st.plotly_chart(fig_components, use_container_width=True)
-                                        
-                                        # Download forecast
-                                        forecast_csv = forecast_df[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].to_csv(index=False)
-                                        st.download_button(
-                                            label="💾 Download Forecast Data",
-                                            data=forecast_csv,
-                                            file_name="prophet_forecast.csv",
-                                            mime="text/csv"
-                                        )
-                
-                except Exception as e:
-                    st.error(f"❌ Error in time series analysis: {str(e)}")
-                    st.info(
-                        "💡 **Common issues:**\n"
-                        "- Date column format not recognized\n"
-                        "- Insufficient data points\n"
-                        "- Missing or invalid values in the series\n\n"
-                        "Try selecting a different date or value column."
-                    )
+                                        st.dataframe(fc['forecast'])
+                            else:
+                                fit = analyzer.fit_prophet(working)
+                                if not fit['success']:
+                                    st.error(fit['message'])
+                                else:
+                                    freq = pd.infer_freq(working.index) or 'M'
+                                    future_idx = pd.date_range(start=working.index[-1], periods=steps+1, freq=freq)[1:]
+                                    model = fit['model']
+                                    future_df = pd.DataFrame({'ds': future_idx})
+                                    forecast_df = model.predict(future_df)
+                                    fig = analyzer.plot_forecast(working, forecast_df.set_index('ds')['yhat'], forecast_df.set_index('ds')[['yhat_lower', 'yhat_upper']].rename(columns={'yhat_lower': 'lower', 'yhat_upper': 'upper'}))
+                                    st.plotly_chart(fig, use_container_width=True)
+                                    st.dataframe(forecast_df[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].rename(columns={'ds': 'Date'}))
+                        except Exception as e:
+                            st.error(str(e))
 
 else:
     # Display welcome message when no data is loaded
