@@ -711,7 +711,7 @@ if data_loader.get_data() is not None:
         if not modes:
             st.error("No time-series capable data detected. Provide a date column, year columns, or a numeric column.")
         else:
-            st.markdown("### ⚙️ Setup Time Series Data")
+            st.markdown('<h3 class="sub-header">⚙️ Setup Time Series Data</h3>', unsafe_allow_html=True)
             mode = st.radio("Data Mode", options=modes)
 
             prepared_series = None
@@ -752,7 +752,7 @@ if data_loader.get_data() is not None:
                 tab_analyze, tab_forecast, tab_stationarity = st.tabs(["📈 Analyze", "🔮 Forecast", "📊 Stationarity"]) 
 
                 with tab_analyze:
-                    st.subheader("Decomposition")
+                    st.markdown('<h3 class="sub-header">Decomposition</h3>', unsafe_allow_html=True)
                     model = st.selectbox("Model", ["additive", "multiplicative"], index=0)
                     if st.button("Run Decomposition"):
                         with st.spinner("Decomposing time series..."):
@@ -763,7 +763,7 @@ if data_loader.get_data() is not None:
                                 st.error(str(e))
 
                 with tab_stationarity:
-                    st.subheader("Stationarity Tests")
+                    st.markdown('<h3 class="sub-header">Stationarity Tests</h3>', unsafe_allow_html=True)
                     if st.button("Run Tests"):
                         with st.spinner("Running ADF/KPSS..."):
                             try:
@@ -791,7 +791,7 @@ if data_loader.get_data() is not None:
                             st.error(str(e))
 
                 with tab_forecast:
-                    st.subheader("Forecasting")
+                    st.markdown('<h3 class="sub-header">Forecasting</h3>', unsafe_allow_html=True)
                     model_choice = st.radio("Model", ["ARIMA", "Prophet"], horizontal=True)
                     steps = st.number_input("Forecast periods", min_value=1, max_value=60, value=12)
                     if st.button("Generate Forecast", type="primary"):
