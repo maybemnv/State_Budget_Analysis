@@ -9,7 +9,6 @@ def find_table_title(text, page_num):
     Find table titles in the format 'Table X.X: [Description]'
     Returns the table number and description if found, None otherwise
     """
-    # Pattern to match table titles like "Table 4.2: Revenue Analysis"
     pattern = r'Table\s+(\d+\.\d+):\s*(.+)'
     match = re.search(pattern, text, re.IGNORECASE)
     
@@ -44,10 +43,13 @@ def clean_dataframe(df):
 
 
 def extract_titled_tables_from_pdf(pdf_path):
-
-    # Create output directory for titled tables
-    output_dir = Path('extracted_tables')
-    output_dir.mkdir(exist_ok=True)
+    # Get PDF filename without extension
+    pdf_name = Path(pdf_path).stem
+    
+    # Create output directory for titled tables with PDF-specific subfolder
+    base_output_dir = Path('extracted_tables')
+    output_dir = base_output_dir / pdf_name
+    output_dir.mkdir(parents=True, exist_ok=True)
     
     titled_tables = []
     
@@ -119,38 +121,45 @@ def extract_titled_tables_from_pdf(pdf_path):
     print(f"\nExtraction complete! Found {len(titled_tables)} titled tables.")
     return titled_tables
 def main():
-    # Path to your PDF file
-    pdf_file = "Report-No.-1-of-2025-English-SFAR-2023-24-068c11ca17d08b3.79273636.pdf"
+    # Get all PDF files in the current directory
+    pdf_files = [f for f in os.listdir() if f.lower().endswith('.pdf')]
     
-    # Check if file exists
-    if not os.path.exists(pdf_file):
-        print(f"Error: PDF file '{pdf_file}' not found!")
-        print("Please place the PDF file in the same directory as this script.")
+    if not pdf_files:
+        print("Error: No PDF files found in the current directory!")
+        print("Please place PDF files in the same directory as this script.")
         return
+
+    print(f"\nFound {len(pdf_files)} PDF file(s) to process.")
     
-    try:
-        # Extract titled tables
-        titled_tables = extract_titled_tables_from_pdf(pdf_file)
+    for idx, pdf_file in enumerate(pdf_files, 1):
+        print(f"\nProcessing PDF {idx}/{len(pdf_files)}: {pdf_file}")
+        print("=" * 70)
         
-        if titled_tables:
-            print("\n" + "=" * 70)
-            print("EXTRACTION SUMMARY")
-            print("=" * 70)
+        try:
+            # Extract titled tables
+            titled_tables = extract_titled_tables_from_pdf(pdf_file)
             
-            for table in titled_tables:
-                print(f"Table {table['table_number']}: {table['description']}")
-                print(f"   Page {table['page']} | File: {table['filename']}.csv")
-                print(f"   Size: {table['data'].shape[0]} rows x {table['data'].shape[1]} columns")
-                print()
-            
-            print(f"Successfully extracted {len(titled_tables)} titled tables!")
-        else:
-            print("\nWarning: No titled tables found in the PDF.")
-            print("Make sure the PDF contains tables with titles in format 'Table X.X: Description'")
-            
-    except Exception as e:
-        print(f"\nError during extraction: {e}")
-        print("Please check the PDF file and try again.")
+            if titled_tables:
+                print("\nEXTRACTION SUMMARY")
+                print("-" * 70)
+                
+                for table in titled_tables:
+                    print(f"Table {table['table_number']}: {table['description']}")
+                    print(f"   Page {table['page']} | File: {table['filename']}.csv")
+                    print(f"   Size: {table['data'].shape[0]} rows x {table['data'].shape[1]} columns")
+                    print()
+                
+                print(f"Successfully extracted {len(titled_tables)} titled tables from {pdf_file}!")
+            else:
+                print(f"\nWarning: No titled tables found in {pdf_file}")
+                print("Make sure the PDF contains tables with titles in format 'Table X.X: Description'")
+                
+        except Exception as e:
+            print(f"\nError processing {pdf_file}: {e}")
+            print("Continuing with next PDF file...")
+            continue
+    
+    print("\nAll PDF files processed!")
 
 
 if __name__ == "__main__":
