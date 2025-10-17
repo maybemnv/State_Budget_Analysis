@@ -1,73 +1,27 @@
+
 import pdfplumber
 import pandas as pd
-import re
-import os
 import sys
-from pathlib import Path
-from datetime import datetime
-from typing import Optional, Dict, List, Tuple, Any
 import logging
+import os
+from pathlib import Path
 from table_extractor import (
-    get_page_elements,
-    find_tables,
-    reconstruct_table,
     find_table_titles,
+    extract_tables_from_page,
     match_tables_to_titles,
+    clean_and_validate_table,
+)
+from utils import (
+    sanitize_filename,
+    get_output_directory,
+    print_extraction_summary,
 )
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def sanitize_filename(description: str, table_num: str, page_num: int, max_length: int = 100) -> str:
-    """
-    Create a filesystem-safe filename with strict sanitization.
-    Removes all problematic characters including : / \ ? * < > | "
-    """
-    # Remove all non-alphanumeric characters except spaces, hyphens, and underscores
-    safe_description = re.sub(r'[^\w\s\-]', '', description)
-    # Replace multiple spaces with single underscore
-    safe_description = re.sub(r'\s+', '_', safe_description.strip())
-    # Remove leading/trailing underscores
-    safe_description = safe_description.strip('_')
-    
-    # Create filename
-    safe_table_num = table_num.replace('.', '_')
-    filename = f"Table_{safe_table_num}_page_{page_num}_{safe_description}"
-    
-    # Truncate to max length
-    if len(filename) > max_length:
-        # Keep the table number and page, truncate description
-        prefix = f"Table_{safe_table_num}_page_{page_num}_"
-        remaining = max_length - len(prefix)
-        if remaining > 10:  # Ensure we have some description left
-            filename = prefix + safe_description[:remaining]
-        else:
-            filename = f"Table_{safe_table_num}_page_{page_num}"
-    
-    # Ensure filename is not empty
-    if not filename:
-        filename = f"Table_{safe_table_num}_page_{page_num}"
-    
-    return filename
-
-def get_output_directory(pdf_path: str, add_timestamp: bool = False) -> Path:
-    """
-    Create output directory with optional timestamp to prevent overwrites.
-    """
-    pdf_name = Path(pdf_path).stem
-    base_output_dir = Path('extracted_tables')
-    
-    if add_timestamp:
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_dir = base_output_dir / f"{pdf_name}_{timestamp}"
-    else:
-        output_dir = base_output_dir / pdf_name
-    
-    output_dir.mkdir(parents=True, exist_ok=True)
-    return output_dir
-
-def extract_titled_tables_from_pdf(pdf_path: str, add_timestamp: bool = False) -> List[Dict[str, Any]]:
+def extract_titled_tables_from_pdf(pdf_path: str, add_timestamp: bool = False) -> list[dict[str, any]]:
     """
     Extract tables with titles from a PDF file.
     
@@ -91,26 +45,27 @@ def extract_titled_tables_from_pdf(pdf_path: str, add_timestamp: bool = False) -
             for page in pdf.pages:
                 logger.info(f"Processing page {page.page_number}/{len(pdf.pages)}...")
                 
-                page_elements = get_page_elements(page)
                 titles = find_table_titles(page)
-                
                 if not titles:
                     logger.debug(f"  No table titles found on page {page.page_number}")
                     continue
                 
-                tables = find_tables(page_elements, page.height)
+                tables = extract_tables_from_page(page)
                 if not tables:
-                    logger.warning(f"  No tables found on page {page.page_number}")
+                    logger.warning(f"  No tables extracted on page {page.page_number} despite finding {len(titles)} title(s)")
                     continue
                 
                 matched_tables = match_tables_to_titles(tables, titles, page.height)
                 
                 for matched_table in matched_tables:
                     title = matched_table['title']
-                    table_bbox = matched_table['table']
+                    table = matched_table['table']
                     
-                    reconstructed_table = reconstruct_table(table_bbox, page_elements)
-                    df = pd.DataFrame(reconstructed_table)
+                    cleaned_df = clean_and_validate_table(table.extract())
+                    
+                    if cleaned_df is None:
+                        logger.warning(f"  Table on page {page.page_number} skipped after cleaning.")
+                        continue
                     
                     filename = sanitize_filename(
                         title['description'],
@@ -121,8 +76,8 @@ def extract_titled_tables_from_pdf(pdf_path: str, add_timestamp: bool = False) -
                     output_path = output_dir / f"{filename}.xlsx"
                     
                     try:
-                        df.to_excel(output_path, index=False, header=False)
-                        logger.info(f"  ✓ Saved: {filename}.xlsx ({df.shape[0]}x{df.shape[1]})")
+                        cleaned_df.to_excel(output_path, index=False)
+                        logger.info(f"  ✓ Saved: {filename}.xlsx ({cleaned_df.shape[0]}x{cleaned_df.shape[1]})")
                     except Exception as excel_error:
                         logger.error(f"  Failed to save Excel: {excel_error}")
                         continue
@@ -132,9 +87,9 @@ def extract_titled_tables_from_pdf(pdf_path: str, add_timestamp: bool = False) -
                         'table_number': title['number'],
                         'description': title['description'],
                         'page': page.page_number,
-                        'data': df,
+                        'data': cleaned_df,
                         'file_path': output_path,
-                        'shape': df.shape
+                        'shape': cleaned_df.shape
                     })
     
     except Exception as e:
@@ -145,38 +100,19 @@ def extract_titled_tables_from_pdf(pdf_path: str, add_timestamp: bool = False) -
     logger.info(f"Extraction complete!")
     logger.info(f"  Successfully extracted: {len(titled_tables)} tables")
     logger.info(f"  Output directory: {output_dir}")
-    logger.info(f"{ '='*70}\n")
+    logger.info(f"{'='*70}\n")
     
     return titled_tables
-
-def print_extraction_summary(titled_tables: List[Dict[str, Any]]) -> None:
-    """
-    Print a formatted summary of extracted tables.
-    """
-    if not titled_tables:
-        return
-    
-    print("\n" + "=" * 70)
-    print("EXTRACTION SUMMARY")
-    print("=" * 70)
-    
-    for table in titled_tables:
-        print(f"\n📊 Table {table['table_number']}: {table['description']}")
-        print(f"   📄 Page: {table['page']}")
-        print(f"   📁 File: {table['filename']}.xlsx")
-        print(f"   📐 Size: {table['shape'][0]} rows × {table['shape'][1]} columns")
-    
-    print("\n" + "=" * 70)
 
 def main():
     """
     Main function with support for command-line arguments.
     
     Usage:
-        python extract_tables.py                    # Process all PDFs in current directory
-        python extract_tables.py file.pdf           # Process specific PDF file
-        python extract_tables.py --timestamp        # Add timestamp to output folders
-        python extract_tables.py file.pdf --timestamp
+        python main.py                    # Process all PDFs in current directory
+        python main.py file.pdf           # Process specific PDF file
+        python main.py --timestamp        # Add timestamp to output folders
+        python main.py file.pdf --timestamp
     """
     import argparse
     
@@ -185,10 +121,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
-  python extract_tables.py                    # Process all PDFs in current directory
-  python extract_tables.py budget.pdf         # Process specific PDF file
-  python extract_tables.py --timestamp        # Add timestamp to output folders
-  python extract_tables.py budget.pdf -t      # Process specific file with timestamp
+  python main.py                    # Process all PDFs in current directory
+  python main.py budget.pdf         # Process specific PDF file
+  python main.py --timestamp        # Add timestamp to output folders
+  python main.py budget.pdf -t      # Process specific file with timestamp
         '''
     )
     
@@ -231,24 +167,24 @@ Examples:
         if not pdf_files:
             logger.error("Error: No PDF files found in the current directory!")
             logger.info("Please place PDF files in the same directory as this script.")
-            logger.info("Or specify a PDF file: python extract_tables.py <filename.pdf>")
+            logger.info("Or specify a PDF file: python main.py <filename.pdf>")
             return 1
     
     logger.info(f"\n{'='*70}")
     logger.info(f"PDF Table Extraction Tool")
-    logger.info(f"{ '='*70}")
+    logger.info(f"{'='*70}")
     logger.info(f"Found {len(pdf_files)} PDF file(s) to process")
     logger.info(f"Timestamp mode: {'ON' if args.timestamp else 'OFF'}")
-    logger.info(f"{ '='*70}\n")
+    logger.info(f"{'='*70}\n")
     
     # Process each PDF file
     total_tables = 0
     failed_files = []
     
     for idx, pdf_file in enumerate(pdf_files, 1):
-        logger.info(f"\n{'#'*70}")
+        logger.info(f"\n{'='*70}")
         logger.info(f"Processing PDF {idx}/{len(pdf_files)}: {pdf_file}")
-        logger.info(f"{ '#' * 70}\n")
+        logger.info(f"\n{'='*70}")
         
         try:
             # Extract titled tables
