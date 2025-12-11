@@ -117,6 +117,20 @@ class TimeSeriesAnalyzer:
     def create_time_series_from_sequential(self, df: pd.DataFrame, value_column: str, freq: str = 'M', start_date: str = '2000-01-01') -> Tuple[Optional[pd.Series], Optional[str]]:
         try:
             values = pd.to_numeric(df[value_column], errors='coerce')
+            
+            # Safety check for potentially huge ranges causing timestamp overflow
+            # pandas timestamp max year is ~2262
+            start_ts = pd.to_datetime(start_date)
+            # Rough check: if we have 50k points and freq='Y', that's 50k years -> boom
+            # Freq aliases: D=1, W=7, M=30, Q=90, Y=365 (approx)
+            est_days = len(values) * {'D': 1, 'W': 7, 'M': 30, 'Q': 90, 'Y': 365}.get(freq, 1)
+            end_year = start_ts.year + (est_days // 365)
+            
+            if end_year > 2200:
+                 # Auto-adjust frequency or warn?
+                 # For now, let's switch to a simple range index if it fails, OR just error with a helpful message
+                 return None, f"Generated time horizon ends in year {end_year}, which exceeds Pandas timestamp limits (Max ~2262). Try a smaller subset or higher frequency (e.g. Daily)."
+
             dates = pd.date_range(start=start_date, periods=len(values), freq=freq)
             series = pd.Series(values.values, index=dates, name=value_column)
             return series, None

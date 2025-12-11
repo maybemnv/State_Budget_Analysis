@@ -80,7 +80,7 @@ def fit_arima(series: pd.Series, order: Tuple[int, int, int],
             )
         
         # Fit the model
-        model_fit = model.fit(disp=0)
+        model_fit = model.fit()
         
         # Get model summary
         model_info['aic'] = model_fit.aic
