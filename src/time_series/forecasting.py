@@ -9,7 +9,12 @@ import pandas as pd
 import numpy as np
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tsa.arima.model import ARIMA
-from prophet import Prophet
+from statsmodels.tsa.arima.model import ARIMA
+try:
+    from prophet import Prophet
+except ImportError:
+    Prophet = None
+import warnings
 import warnings
 
 # Suppress warnings
@@ -151,6 +156,14 @@ def fit_prophet(series: pd.Series, **kwargs) -> Dict[str, Any]:
     Returns:
         Dictionary containing the fitted model and model information
     """
+    if Prophet is None:
+        return {
+            'model': None,
+            'model_info': None,
+            'success': False,
+            'message': 'Prophet library is not installed. Please install it using "pip install prophet" to use this feature.'
+        }
+
     if not isinstance(series, pd.Series):
         series = pd.Series(series)
     

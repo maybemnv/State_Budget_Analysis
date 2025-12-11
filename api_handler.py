@@ -2,11 +2,11 @@ import os
 from flask import Flask, request, jsonify, render_template, send_from_directory, Response
 import json
 
-from data_loader import DataLoader
-from visualizer import Visualizer
-from statistical_analyzer import StatisticalAnalyzer
-from ml_analyzer import MLAnalyzer
-from gemini_analyzer import GeminiAnalyzer
+from src.data_loader import DataLoader
+from src.ui.visualizer import Visualizer
+from src.analyzers.statistical_analyzer import StatisticalAnalyzer
+from src.analyzers.ml_analyzer import MLAnalyzer
+from src.analyzers.gemini_analyzer import GeminiAnalyzer
 
 class APIHandler:
     """

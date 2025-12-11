@@ -3,6 +3,7 @@ import numpy as np
 from pathlib import Path
 from typing import Union, Dict, Any, Optional, List
 import io
+import base64
 import streamlit as st
 
 from .config import DATA_DIR, APP_CONFIG
@@ -11,18 +12,68 @@ from .utils.date_utils import parse_financial_year, detect_date_format
 class DataLoader:
     """Class to handle data loading and preparation."""
     
+    def clean_data(self):
+        """
+        Perform basic data cleaning operations on the loaded data.
+        - Trims whitespace from string columns
+        - Drops fully empty rows and columns
+        - Resets index
+        """
+        if self.data is not None:
+            # 1. Trim whitespace from string columns
+            df_obj = self.data.select_dtypes(['object'])
+            self.data[df_obj.columns] = df_obj.apply(lambda x: x.str.strip().replace(r'^\s*$', np.nan, regex=True))
+            
+            # 2. Drop rows and columns that are completely empty
+            self.data.dropna(how='all', axis=0, inplace=True)
+            self.data.dropna(how='all', axis=1, inplace=True)
+            
+            # 3. Reset index
+            self.data.reset_index(drop=True, inplace=True)
+            
     def __init__(self):
-        self.data = None
-        self.metadata = {
-            'source': None,
-            'columns': [],
-            'date_columns': [],
-            'numeric_columns': [],
-            'categorical_columns': [],
-            'shape': (0, 0),
-            'missing_values': 0,
-            'duplicates': 0
-        }
+        """Initialize the DataLoader class."""
+        self._init_session_state()
+        
+    def _init_session_state(self):
+        """Initialize session state variables if they don't exist."""
+        if 'data' not in st.session_state:
+            st.session_state.data = None
+        if 'filename' not in st.session_state:
+            st.session_state.filename = None
+        if 'metadata' not in st.session_state:
+            st.session_state.metadata = {
+                'source': None,
+                'columns': [],
+                'date_columns': [],
+                'numeric_columns': [],
+                'categorical_columns': [],
+                'shape': (0, 0),
+                'missing_values': 0,
+                'duplicates': 0
+            }
+            
+    @property
+    def data(self):
+        return st.session_state.data
+        
+    @data.setter
+    def data(self, value):
+        st.session_state.data = value
+        
+    @property
+    def metadata(self):
+        return st.session_state.metadata
+
+    def create_upload_widget(self):
+        """
+        Create a file uploader widget for CSV and Excel files.
+        
+        Returns:
+            uploaded_file: The uploaded file object or None
+        """
+        uploaded_file = st.file_uploader("Upload your CSV or Excel file", type=['csv', 'xlsx'])
+        return uploaded_file
     
     def load_data(self, source: Union[str, Path, pd.DataFrame], **kwargs) -> pd.DataFrame:
         """
@@ -39,22 +90,26 @@ class DataLoader:
             source = str(source)
             if source.endswith('.csv'):
                 self.data = pd.read_csv(source, **kwargs)
+                st.session_state.filename = Path(source).name
             elif source.endswith(('.xls', '.xlsx')):
                 self.data = pd.read_excel(source, **kwargs)
+                st.session_state.filename = Path(source).name
             elif source.endswith('.parquet'):
                 self.data = pd.read_parquet(source, **kwargs)
+                st.session_state.filename = Path(source).name
             else:
                 raise ValueError(f"Unsupported file format: {source}")
             
             self.metadata['source'] = source
-        elif isinstance(source, pd.DataFrame):
-            self.data = source.copy()
-            self.metadata['source'] = 'dataframe_input'
+        elif hasattr(source, 'read') and hasattr(source, 'name'):
+             # Assume it is a Streamlit UploadedFile or file-like object
+             return self.load_from_streamlit_uploader(source, **kwargs) is not None
         else:
-            raise ValueError("Source must be a file path or pandas DataFrame")
+            raise ValueError("Source must be a file path, pandas DataFrame, or file-like object")
         
+        self.clean_data()
         self._update_metadata()
-        return self.data
+        return True # Return success boolean for compatibility
     
     def load_from_streamlit_uploader(self, uploaded_file, **kwargs) -> pd.DataFrame:
         """
@@ -84,6 +139,8 @@ class DataLoader:
                 return None
                 
             self.metadata['source'] = uploaded_file.name
+            
+            self.clean_data()
             self._update_metadata()
             return self.data
             
@@ -188,3 +245,98 @@ class DataLoader:
         })
         
         return summary
+    
+    def get_data(self):
+        """
+        Get the currently loaded data.
+        
+        Returns:
+            pandas.DataFrame: The loaded data or None if no data is loaded
+        """
+        return self.data
+    
+    def get_filename(self):
+        """
+        Get the filename of the currently loaded data.
+        
+        Returns:
+            str: The filename or None if no file is loaded
+        """
+        return st.session_state.filename
+        
+    def get_data_info(self):
+        """
+        Get basic information about the loaded data (API compatibility wrapper).
+        """
+        if self.data is not None:
+            df = self.data
+            
+            # Calculate memory usage
+            memory_usage = df.memory_usage(deep=True).sum()
+            if memory_usage < 1024:
+                memory_str = f"{memory_usage} bytes"
+            elif memory_usage < 1024**2:
+                memory_str = f"{memory_usage/1024:.2f} KB"
+            else:
+                memory_str = f"{memory_usage/(1024**2):.2f} MB"
+            
+            return {
+                "filename": st.session_state.filename,
+                "rows": df.shape[0],
+                "columns": df.shape[1],
+                "memory_usage": memory_str,
+                "missing_values": df.isnull().sum().sum()
+            }
+        return None
+
+    def get_column_info(self):
+        """
+        Get detailed information about each column (API compatibility wrapper).
+        """
+        if self.data is not None:
+            df = self.data
+            col_info = []
+            for col in df.columns:
+                dtype = str(df[col].dtype)
+                unique = df[col].nunique()
+                missing = df[col].isnull().sum()
+                missing_pct = (missing / len(df)) * 100
+                
+                col_info.append({
+                    "Column": col,
+                    "Data Type": dtype,
+                    "Unique Values": unique,
+                    "Missing Values": missing,
+                    "Missing (%)": f"{missing_pct:.2f}%"
+                })
+            return col_info
+        return None
+
+    def create_download_link(self, processed_df=None, filename=None):
+        """
+        Create a download link for the data.
+        
+        Args:
+            processed_df (pandas.DataFrame, optional): A processed dataframe to download.
+                If None, the original data will be used.
+            filename (str, optional): Filename for the download.
+                
+        Returns:
+            str: HTML link for downloading the data
+        """
+        if processed_df is None:
+            processed_df = self.data
+        
+        if processed_df is not None:
+            csv = processed_df.to_csv(index=False)
+            b64 = base64.b64encode(csv.encode()).decode()
+            
+            if filename is None:
+                orig_name = self.metadata.get('source', 'data')
+                if isinstance(orig_name, str):
+                    filename = Path(orig_name).stem
+                else:
+                    filename = "data"
+            
+            return f'<a href="data:file/csv;base64,{b64}" download="{filename}_processed.csv">Download CSV File</a>'
+        return None
