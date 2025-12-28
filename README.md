@@ -1,4 +1,4 @@
-# CSV Data Analyzer
+# CSV Data Analyzer()
 
 A powerful data analysis application built with Python, Streamlit, and Google's Gemini AI that allows users to upload their own CSV files and get comprehensive analysis results.
 
@@ -23,14 +23,23 @@ A powerful data analysis application built with Python, Streamlit, and Google's 
 ## Installation
 
 ```bash
-pip install streamlit pandas matplotlib seaborn scikit-learn google-generativeai
+# Create a virtual enivornment
+uv venv
+
+# Activate it
+.venv/Scripts/Activate
+
+# Install all of dependencies
+uv add -r requirements.txt
+
 ```
 
 ## Usage
 
 1. Run the application:
+
 ```bash
-streamlit run app.py
+uv run streamlit run app.py
 ```
 
 2. Upload your CSV file using the sidebar
@@ -42,4 +51,3 @@ streamlit run app.py
 A sample dataset (`sample_data.csv`) is included for testing purposes.
 
 [![Watch the Demo](./csv_analyzer_demo.png)](https://drive.google.com/file/d/1k-lLvTqXvn6jVPf7veY1Jd1Q4DgUGHo1/view?usp=sharing)
-
