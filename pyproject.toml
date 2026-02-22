@@ -28,8 +28,8 @@ dependencies = [
     "pydantic>=2.10",
     "pydantic-settings>=2.7",
     # LangChain agent
-    "langchain>=0.3",
-    "langchain-core>=0.3",
+    "langchain>=0.3,<1.0",
+    "langchain-core>=0.3,<1.0",
     "langchain-google-genai>=2.0",
     # Streamlit (legacy — v1 only)
     "streamlit>=1.52.1",
