@@ -31,13 +31,16 @@ def describe_dataset(session_id: str) -> dict:
 @tool("generate_chart_spec", args_schema=GenerateChartSpecInput)
 def generate_chart_spec(
     session_id: str,
-    chart_type: str,
+    chart_type: Optional[str] = None,
     x_column: Optional[str] = None,
     y_column: Optional[str] = None,
     color_column: Optional[str] = None,
     title: Optional[str] = None,
 ) -> dict:
     """Generate a Vega-Lite chart spec for the frontend. chart_type: scatter, line, bar, histogram, box."""
+    if not chart_type:
+        return {"error": "chart_type is required. Choose from: scatter, line, bar, histogram, box"}
+
     df, err = require_df(session_id)
     if err:
         return err
@@ -46,7 +49,14 @@ def generate_chart_spec(
         if col and col not in df.columns:
             return {"error": f"Column not found: {col!r}"}
 
-    mark_map = {"scatter": "point", "line": "line", "bar": "bar", "histogram": "bar", "box": "boxplot"}
+    mark_map = {
+        "scatter": "point",
+        "line": "line",
+        "bar": "bar",
+        "histogram": "bar",
+        "box": "boxplot",
+        "heatmap": "rect",
+    }
 
     enc: dict = {}
     if x_column:
@@ -56,11 +66,15 @@ def generate_chart_spec(
             else "nominal"
         )
         enc["x"] = {"field": x_column, "type": col_type}
+
     if y_column:
         enc["y"] = {"field": y_column, "type": "quantitative"}
     elif chart_type == "histogram" and x_column:
         enc["y"] = {"aggregate": "count", "type": "quantitative"}
-    if color_column and color_column in df.columns:
+
+    if chart_type == "heatmap":
+        enc["color"] = {"aggregate": "count", "type": "quantitative"}
+    elif color_column and color_column in df.columns:
         enc["color"] = {"field": color_column, "type": "nominal"}
 
     data_cols = [c for c in (x_column, y_column, color_column) if c]

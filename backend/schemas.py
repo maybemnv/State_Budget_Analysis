@@ -1,27 +1,34 @@
 import json
 from typing import Any, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class SessionUnwrapper(BaseModel):
     """Mixin to handle the common 'Action Input: {"session_id": "{JSON}"}' LLM error.
 
     If the LLM puts the whole JSON object string into the session_id field,
-    this validator extracts the actual UUID before Pydantic fails validation.
+    this validator flattens it so all fields are available at the top level.
     """
     session_id: str
 
-    @field_validator("session_id", mode="before")
+    @model_validator(mode="before")
     @classmethod
-    def _unwrap_session_id(cls, v: Any) -> Any:
-        if isinstance(v, str) and v.strip().startswith("{"):
+    def _unwrap_payload(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        sid = data.get("session_id")
+        if isinstance(sid, str) and sid.strip().startswith("{"):
             try:
-                data = json.loads(v)
-                if isinstance(data, dict):
-                    return data.get("session_id", v)
+                nested = json.loads(sid)
+                if isinstance(nested, dict):
+                    # Merge nested keys into the top-level dict
+                    # This fixes cases where the LLM does:
+                    # {"session_id": "{\"session_id\": \"...\", \"group_column\": \"...\"}"}
+                    return {**nested, **data, "session_id": nested.get("session_id", sid)}
             except json.JSONDecodeError:
                 pass
-        return v
+        return data
 
 
 # --- Statistical tool schemas ---
@@ -107,7 +114,7 @@ class DescribeDatasetInput(SessionUnwrapper):
 
 
 class GenerateChartSpecInput(SessionUnwrapper):
-    chart_type: str = Field(description="One of: scatter, line, bar, histogram, heatmap, box")
+    chart_type: Optional[str] = Field(default=None, description="One of: scatter, line, bar, histogram, heatmap, box")
     x_column: Optional[str] = None
     y_column: Optional[str] = None
     color_column: Optional[str] = None

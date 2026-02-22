@@ -41,7 +41,8 @@ Tool names: {tool_names}
 Rules:
 - ALWAYS call describe_dataset first on any new query.
 - NEVER invent a session_id — use the one above.
-- NEVER wrap the Action Input JSON in quotes or markdown code blocks unless the format requires it.
+- NEVER wrap the Action Input JSON in quotes or markdown code blocks.
+- NEVER nest all parameters inside the session_id string; provide them as separate JSON keys.
 - Chain tools until you have concrete numbers; never skip to conclusions.
 - Include a generate_chart_spec call whenever a chart would aid understanding.
 - Report tool errors clearly; do not fabricate data.
