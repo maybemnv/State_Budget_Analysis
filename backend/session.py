@@ -1,10 +1,25 @@
+import json
 import uuid
 from typing import Optional
 import pandas as pd
 
 
-# In-memory session store: session_id → {df, filename, metadata}
 _sessions: dict[str, dict] = {}
+
+
+def _resolve_id(session_id: str) -> str:
+    """Unwrap session_id if LangChain passed the whole JSON object as a string.
+
+    e.g. '{"session_id": "abc-123"}' → 'abc-123'
+    """
+    s = session_id.strip()
+    if s.startswith("{"):
+        try:
+            parsed = json.loads(s)
+            return str(parsed.get("session_id", s))
+        except (json.JSONDecodeError, AttributeError):
+            pass
+    return s
 
 
 def create_session(df: pd.DataFrame, filename: str) -> str:
@@ -18,11 +33,11 @@ def create_session(df: pd.DataFrame, filename: str) -> str:
 
 
 def get_session(session_id: str) -> Optional[dict]:
-    return _sessions.get(session_id)
+    return _sessions.get(_resolve_id(session_id))
 
 
 def get_df(session_id: str) -> Optional[pd.DataFrame]:
-    session = _sessions.get(session_id)
+    session = _sessions.get(_resolve_id(session_id))
     return session["df"] if session else None
 
 
