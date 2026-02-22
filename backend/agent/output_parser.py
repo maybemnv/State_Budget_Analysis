@@ -9,7 +9,7 @@ class AnalysisResult(TypedDict):
     has_error: bool
 
 
-_CHART_BLOCK = re.compile(r"```(?:json)?\s*(\{[\s\S]*?\"\\$schema\"[\s\S]*?\})\s*```", re.IGNORECASE)
+_CHART_BLOCK = re.compile(r"```(?:json)?\s*(\{[\s\S]*?\"\$schema\"[\s\S]*?\})\s*```", re.IGNORECASE)
 _ERROR_PREFIXES = ("i encountered an error", "error:", "session")
 
 

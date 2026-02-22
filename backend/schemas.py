@@ -1,102 +1,120 @@
+import json
 from typing import Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
-class DescriptiveStatsInput(BaseModel):
+class SessionUnwrapper(BaseModel):
+    """Mixin to handle the common 'Action Input: {"session_id": "{JSON}"}' LLM error.
+
+    If the LLM puts the whole JSON object string into the session_id field,
+    this validator extracts the actual UUID before Pydantic fails validation.
+    """
     session_id: str
+
+    @field_validator("session_id", mode="before")
+    @classmethod
+    def _unwrap_session_id(cls, v: Any) -> Any:
+        if isinstance(v, str) and v.strip().startswith("{"):
+            try:
+                data = json.loads(v)
+                if isinstance(data, dict):
+                    return data.get("session_id", v)
+            except json.JSONDecodeError:
+                pass
+        return v
+
+
+# --- Statistical tool schemas ---
+
+class DescriptiveStatsInput(SessionUnwrapper):
     columns: Optional[list[str]] = None
 
 
-class GroupByInput(BaseModel):
-    session_id: str
+class GroupByInput(SessionUnwrapper):
     group_column: str
     agg_column: str
     agg_func: str = Field(default="mean", pattern="^(mean|median|sum|min|max|count|std)$")
 
 
-class CorrelationInput(BaseModel):
-    session_id: str
+class CorrelationInput(SessionUnwrapper):
     columns: Optional[list[str]] = None
 
 
-class ValueCountsInput(BaseModel):
-    session_id: str
+class ValueCountsInput(SessionUnwrapper):
     column: str
     normalize: bool = False
     limit: int = Field(default=20, ge=1, le=200)
 
 
-class OutliersInput(BaseModel):
-    session_id: str
+class OutliersInput(SessionUnwrapper):
     columns: Optional[list[str]] = None
     method: str = Field(default="iqr", pattern="^(iqr|zscore)$")
     threshold: float = 1.5
 
 
-class PCAInput(BaseModel):
-    session_id: str
+# --- ML tool schemas ---
+
+class PCAInput(SessionUnwrapper):
     columns: Optional[list[str]] = None
     n_components: Optional[int] = Field(default=None, ge=2)
 
 
-class ClusteringInput(BaseModel):
-    session_id: str
+class ClusteringInput(SessionUnwrapper):
     columns: Optional[list[str]] = None
     n_clusters: int = Field(default=3, ge=2, le=20)
 
 
-class RegressionInput(BaseModel):
-    session_id: str
+class RegressionInput(SessionUnwrapper):
     target_column: str
     feature_columns: Optional[list[str]] = None
     test_size: float = Field(default=0.2, gt=0.0, lt=1.0)
 
 
-class ClassificationInput(BaseModel):
-    session_id: str
+class ClassificationInput(SessionUnwrapper):
     target_column: str
     feature_columns: Optional[list[str]] = None
     test_size: float = Field(default=0.2, gt=0.0, lt=1.0)
 
 
-class AnomalyDetectionInput(BaseModel):
-    session_id: str
+class AnomalyDetectionInput(SessionUnwrapper):
     columns: Optional[list[str]] = None
     contamination: float = Field(default=0.05, gt=0.0, lt=0.5)
 
 
-class TimeSeriesInput(BaseModel):
-    session_id: str
+# --- Time series tool schemas ---
+
+class TimeSeriesInput(SessionUnwrapper):
     date_column: str
     value_column: str
 
 
-class ForecastInput(BaseModel):
-    session_id: str
+class ForecastInput(SessionUnwrapper):
     date_column: str
     value_column: str
     steps: int = Field(default=12, ge=1)
     model: str = Field(default="arima", pattern="^(arima|prophet)$")
 
 
-class StationarityInput(BaseModel):
-    session_id: str
+class StationarityInput(SessionUnwrapper):
     date_column: str
     value_column: str
 
 
-class DescribeDatasetInput(BaseModel):
-    session_id: str
+# --- Dataset + chart tool schemas ---
+
+class DescribeDatasetInput(SessionUnwrapper):
+    pass
 
 
-class GenerateChartSpecInput(BaseModel):
-    session_id: str
-    chart_type: str = Field(description="One of: scatter, line, bar, histogram, box")
+class GenerateChartSpecInput(SessionUnwrapper):
+    chart_type: str = Field(description="One of: scatter, line, bar, histogram, heatmap, box")
     x_column: Optional[str] = None
     y_column: Optional[str] = None
     color_column: Optional[str] = None
     title: Optional[str] = None
 
+
+# --- API request / response models ---
 
 class UploadResponse(BaseModel):
     session_id: str

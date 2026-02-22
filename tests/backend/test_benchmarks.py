@@ -96,14 +96,14 @@ def test_benchmark_query_count() -> None:
 
 TOOL_GUIDE_KEYWORDS: dict[str, list[str]] = {
     "describe_dataset": ["schema", "columns", "data type", "sample", "overview", "rows"],
-    "descriptive_stats": ["mean", "std", "min", "max", "median", "skew", "descriptive"],
-    "group_by_stats": ["by category", "by region", "by department", "per state", "per year", "break down"],
+    "descriptive_stats": ["mean", "std", "min", "max", "median", "skew", "descriptive", "distribution", "range"],
+    "group_by_stats": ["by category", "by region", "by department", "per state", "per year", "break down", "highest average"],
     "correlation_matrix": ["correlation", "related", "correlated"],
     "outliers_summary": ["outlier"],
     "detect_anomalies": ["anomal", "unusual"],
-    "run_kmeans": ["cluster"],
-    "run_regression": ["predict", "regression", "forecast expenditure", "important for predicting"],
-    "run_forecast": ["forecast", "arima", "next 6 months", "next year"],
+    "run_kmeans": ["cluster", "grouping"],
+    "run_regression": ["predict", "regression", "forecast expenditure", "important for predicting", "expenditure from"],
+    "run_forecast": ["forecast", "arima", "next 6 months", "next year", "over the next year"],
 }
 
 
