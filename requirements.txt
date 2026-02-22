@@ -4,9 +4,7 @@ matplotlib
 seaborn 
 scikit-learn 
 google-generativeai
-openpyxl
+
 statsmodels
 plotly
 prophet
-pytest
-pdfplumber
