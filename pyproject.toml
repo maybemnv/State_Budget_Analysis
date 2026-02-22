@@ -1,21 +1,47 @@
 [project]
 name = "state-budget-analysis"
 version = "0.1.0"
-description = "Add your description here"
+description = "DataLens AI — Autonomous Data Analysis Platform"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "google-generativeai>=0.8.5",
-    "matplotlib>=3.10.7",
-    "openpyxl>=3.1.5",
+    # Existing analysis stack
     "pandas>=2.3.3",
-    "pdfplumber>=0.11.8",
-    "plotly>=6.5.0",
-    "prophet>=1.2.1",
-    "pypdf>=6.4.1",
-    "pytest>=9.0.2",
+    "numpy>=2.0",
     "scikit-learn>=1.7.2",
-    "seaborn>=0.13.2",
     "statsmodels>=0.14.6",
+    "plotly>=6.5.0",
+    "matplotlib>=3.10.7",
+    "seaborn>=0.13.2",
+    "prophet>=1.2.1",
+    "openpyxl>=3.1.5",
+    "pdfplumber>=0.11.8",
+    "pypdf>=6.4.1",
+    # New algorithms (v2)
+    "hdbscan>=0.8.40",
+    "umap-learn>=0.5.7",
+    "shap>=0.46",
+    # FastAPI backend
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "python-multipart>=0.0.20",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
+    # LangChain agent
+    "langchain>=0.3",
+    "langchain-core>=0.3",
+    "langchain-google-genai>=2.0",
+    # Streamlit (legacy — v1 only)
     "streamlit>=1.52.1",
+    "google-generativeai>=0.8.5",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=0.25",
+    "httpx>=0.28",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
