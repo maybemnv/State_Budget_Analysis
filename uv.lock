@@ -2128,6 +2128,7 @@ dependencies = [
     { name = "shap" },
     { name = "statsmodels" },
     { name = "streamlit" },
+    { name = "tenacity" },
     { name = "umap-learn" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -2166,6 +2167,7 @@ requires-dist = [
     { name = "shap", specifier = ">=0.46" },
     { name = "statsmodels", specifier = ">=0.14.6" },
     { name = "streamlit", specifier = ">=1.52.1" },
+    { name = "tenacity", specifier = ">=9.1.2" },
     { name = "umap-learn", specifier = ">=0.5.7" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
 ]

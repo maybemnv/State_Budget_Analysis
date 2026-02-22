@@ -112,4 +112,6 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str
+    chart_spec: Optional[dict[str, Any]] = None
+    has_error: bool = False
     steps: list[dict[str, Any]] = []

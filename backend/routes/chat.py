@@ -1,7 +1,8 @@
 import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from ..session import get_session
-from ..agent.analyst_agent import build_agent
+from ..agent.analyst_agent import run_agent
+from ..agent.output_parser import parse_output
 from ..streaming import WebSocketStreamingCallback
 from ..schemas import ChatRequest, ChatResponse
 
@@ -16,7 +17,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
 
     await websocket.accept()
     callback = WebSocketStreamingCallback(websocket)
-    agent = build_agent(session_id)
 
     try:
         while True:
@@ -26,10 +26,11 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
             except json.JSONDecodeError:
                 message = raw
 
-            try:
-                await agent.ainvoke({"input": message}, config={"callbacks": [callback]})
-            except Exception as e:
-                await callback._send({"type": "error", "message": str(e)})
+            result = await run_agent(session_id, message)
+            parsed = parse_output(result.get("output", ""))
+
+            if parsed["chart_spec"]:
+                await callback._send({"type": "chart", "spec": parsed["chart_spec"]})
 
             await callback._send({"type": "done"})
 
@@ -42,12 +43,17 @@ async def chat(session_id: str, body: ChatRequest) -> ChatResponse:
     if get_session(session_id) is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    agent = build_agent(session_id)
-    result = await agent.ainvoke({"input": body.message})
+    result = await run_agent(session_id, body.message)
+    parsed = parse_output(result.get("output", ""))
 
     steps = [
         {"tool": action.tool, "args": action.tool_input, "result": observation}
         for action, observation in result.get("intermediate_steps", [])
     ]
 
-    return ChatResponse(answer=result.get("output", ""), steps=steps)
+    return ChatResponse(
+        answer=parsed["answer"],
+        chart_spec=parsed["chart_spec"],
+        has_error=parsed["has_error"],
+        steps=steps,
+    )
