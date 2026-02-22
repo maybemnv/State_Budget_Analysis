@@ -2,8 +2,6 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field
 
 
-# --- Statistical tool schemas ---
-
 class DescriptiveStatsInput(BaseModel):
     session_id: str
     columns: Optional[list[str]] = None
@@ -35,8 +33,6 @@ class OutliersInput(BaseModel):
     threshold: float = 1.5
 
 
-# --- ML tool schemas ---
-
 class PCAInput(BaseModel):
     session_id: str
     columns: Optional[list[str]] = None
@@ -47,12 +43,6 @@ class ClusteringInput(BaseModel):
     session_id: str
     columns: Optional[list[str]] = None
     n_clusters: int = Field(default=3, ge=2, le=20)
-
-
-class HDBSCANInput(BaseModel):
-    session_id: str
-    columns: Optional[list[str]] = None
-    min_cluster_size: int = Field(default=5, ge=2)
 
 
 class RegressionInput(BaseModel):
@@ -75,8 +65,6 @@ class AnomalyDetectionInput(BaseModel):
     contamination: float = Field(default=0.05, gt=0.0, lt=0.5)
 
 
-# --- Time series tool schemas ---
-
 class TimeSeriesInput(BaseModel):
     session_id: str
     date_column: str
@@ -97,22 +85,18 @@ class StationarityInput(BaseModel):
     value_column: str
 
 
-# --- Dataset + chart tool schemas ---
-
 class DescribeDatasetInput(BaseModel):
     session_id: str
 
 
 class GenerateChartSpecInput(BaseModel):
     session_id: str
-    chart_type: str = Field(description="One of: scatter, line, bar, histogram, heatmap, box")
+    chart_type: str = Field(description="One of: scatter, line, bar, histogram, box")
     x_column: Optional[str] = None
     y_column: Optional[str] = None
     color_column: Optional[str] = None
     title: Optional[str] = None
 
-
-# --- API request / response models ---
 
 class UploadResponse(BaseModel):
     session_id: str

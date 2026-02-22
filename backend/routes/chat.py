@@ -16,23 +16,18 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
 
     await websocket.accept()
     callback = WebSocketStreamingCallback(websocket)
+    agent = build_agent(session_id)
 
     try:
         while True:
             raw = await websocket.receive_text()
             try:
-                data = json.loads(raw)
-                message = data.get("message", "")
+                message = json.loads(raw).get("message", "")
             except json.JSONDecodeError:
                 message = raw
 
-            agent = build_agent(session_id)
             try:
-                result = await agent.ainvoke(
-                    {"input": message, "session_id": session_id},
-                    config={"callbacks": [callback]},
-                )
-                # Final answer is sent via on_agent_finish callback
+                await agent.ainvoke({"input": message}, config={"callbacks": [callback]})
             except Exception as e:
                 await callback._send({"type": "error", "message": str(e)})
 
@@ -44,22 +39,15 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
 
 @router.post("/chat/{session_id}", response_model=ChatResponse)
 async def chat(session_id: str, body: ChatRequest) -> ChatResponse:
-    """Synchronous fallback — returns complete agent response as JSON."""
     if get_session(session_id) is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
     agent = build_agent(session_id)
-    result = await agent.ainvoke({"input": body.message, "session_id": session_id})
+    result = await agent.ainvoke({"input": body.message})
 
-    steps = []
-    for action, observation in result.get("intermediate_steps", []):
-        steps.append({
-            "tool": action.tool,
-            "args": action.tool_input,
-            "result": observation,
-        })
+    steps = [
+        {"tool": action.tool, "args": action.tool_input, "result": observation}
+        for action, observation in result.get("intermediate_steps", [])
+    ]
 
-    return ChatResponse(
-        answer=result.get("output", ""),
-        steps=steps,
-    )
+    return ChatResponse(answer=result.get("output", ""), steps=steps)

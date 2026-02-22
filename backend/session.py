@@ -1,22 +1,21 @@
 import json
 import uuid
 from typing import Optional
-import pandas as pd
 
+import pandas as pd
 
 _sessions: dict[str, dict] = {}
 
 
-def _resolve_id(session_id: str) -> str:
-    """Unwrap session_id if LangChain passed the whole JSON object as a string.
+def _resolve_id(raw: str) -> str:
+    """Unwrap a session_id that LangChain may deliver as a JSON-wrapped string.
 
-    e.g. '{"session_id": "abc-123"}' → 'abc-123'
+    Example: '{"session_id": "abc-123"}' → 'abc-123'
     """
-    s = session_id.strip()
+    s = raw.strip()
     if s.startswith("{"):
         try:
-            parsed = json.loads(s)
-            return str(parsed.get("session_id", s))
+            return str(json.loads(s).get("session_id", s))
         except (json.JSONDecodeError, AttributeError):
             pass
     return s

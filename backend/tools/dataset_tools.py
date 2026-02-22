@@ -1,13 +1,14 @@
-from typing import Optional
 from langchain_core.tools import tool
 from ..schemas import DescribeDatasetInput, GenerateChartSpecInput
 from ..session import get_df, get_session
 from ..analyzers.statistical import missing_values_summary
+from .guards import require_df
+from typing import Optional
 
 
 @tool("describe_dataset", args_schema=DescribeDatasetInput)
 def describe_dataset(session_id: str) -> dict:
-    """Always call this first. Returns schema, dtypes, null counts, sample rows, and column summary for the loaded dataset."""
+    """Always call this first. Returns schema, dtypes, null counts, sample rows, and column summary."""
     session = get_session(session_id)
     if session is None:
         return {"error": f"Session {session_id!r} not found"}
@@ -36,28 +37,23 @@ def generate_chart_spec(
     color_column: Optional[str] = None,
     title: Optional[str] = None,
 ) -> dict:
-    """Generate a Vega-Lite chart specification for the frontend to render. chart_type: scatter, line, bar, histogram, heatmap, box."""
-    df = get_df(session_id)
-    if df is None:
-        return {"error": f"Session {session_id!r} not found"}
+    """Generate a Vega-Lite chart spec for the frontend. chart_type: scatter, line, bar, histogram, box."""
+    df, err = require_df(session_id)
+    if err:
+        return err
 
-    if x_column and x_column not in df.columns:
-        return {"error": f"Column not found: {x_column!r}"}
-    if y_column and y_column not in df.columns:
-        return {"error": f"Column not found: {y_column!r}"}
+    for col in (x_column, y_column):
+        if col and col not in df.columns:
+            return {"error": f"Column not found: {col!r}"}
 
-    mark_map = {
-        "scatter": "point",
-        "line": "line",
-        "bar": "bar",
-        "histogram": "bar",
-        "box": "boxplot",
-    }
+    mark_map = {"scatter": "point", "line": "line", "bar": "bar", "histogram": "bar", "box": "boxplot"}
 
     enc: dict = {}
     if x_column:
-        col_type = "temporal" if "date" in x_column.lower() else (
-            "quantitative" if df[x_column].dtype.kind in "ifc" else "nominal"
+        col_type = (
+            "temporal" if "date" in x_column.lower()
+            else "quantitative" if df[x_column].dtype.kind in "ifc"
+            else "nominal"
         )
         enc["x"] = {"field": x_column, "type": col_type}
     if y_column:
@@ -67,12 +63,14 @@ def generate_chart_spec(
     if color_column and color_column in df.columns:
         enc["color"] = {"field": color_column, "type": "nominal"}
 
-    spec: dict = {
-        "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-        "title": title or f"{chart_type.capitalize()}: {x_column or ''}/{y_column or ''}",
-        "mark": mark_map.get(chart_type, "point"),
-        "encoding": enc,
-        "data": {"values": df[[c for c in [x_column, y_column, color_column] if c]].head(2000).to_dict(orient="records")},
+    data_cols = [c for c in (x_column, y_column, color_column) if c]
+    return {
+        "chart_spec": {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "title": title or f"{chart_type.capitalize()}: {x_column or ''}/{y_column or ''}",
+            "mark": mark_map.get(chart_type, "point"),
+            "encoding": enc,
+            "data": {"values": df[data_cols].head(2000).to_dict(orient="records")},
+        },
+        "chart_type": chart_type,
     }
-
-    return {"chart_spec": spec, "chart_type": chart_type}
