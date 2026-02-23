@@ -1,3 +1,4 @@
+from typing import Optional
 from langchain_core.tools import tool
 from ..schemas import TimeSeriesInput, ForecastInput, StationarityInput
 from ..analyzers.time_series.analyzer import TimeSeriesAnalyzer
@@ -7,8 +8,15 @@ from .guards import require_df
 
 
 @tool("check_stationarity", args_schema=StationarityInput)
-def check_stationarity(session_id: str, date_column: str, value_column: str) -> dict:
+def check_stationarity(
+    session_id: Optional[str] = None,
+    date_column: Optional[str] = None,
+    value_column: Optional[str] = None,
+) -> dict:
     """Run ADF + KPSS stationarity tests on a time series column."""
+    if not date_column or not value_column:
+        return {"error": "date_column and value_column are both required"}
+
     df, err = require_df(session_id)
     if err:
         return err
@@ -21,13 +29,16 @@ def check_stationarity(session_id: str, date_column: str, value_column: str) -> 
 
 @tool("run_forecast", args_schema=ForecastInput)
 def run_forecast(
-    session_id: str,
-    date_column: str,
-    value_column: str,
+    session_id: Optional[str] = None,
+    date_column: Optional[str] = None,
+    value_column: Optional[str] = None,
     steps: int = 12,
     model: str = "arima",
 ) -> dict:
     """Forecast a time series using ARIMA or Prophet. Returns point forecasts and confidence intervals."""
+    if not date_column or not value_column:
+        return {"error": "date_column and value_column are both required"}
+
     df, err = require_df(session_id)
     if err:
         return err
@@ -43,8 +54,15 @@ def run_forecast(
 
 
 @tool("decompose_time_series", args_schema=TimeSeriesInput)
-def decompose_time_series(session_id: str, date_column: str, value_column: str) -> dict:
+def decompose_time_series(
+    session_id: Optional[str] = None,
+    date_column: Optional[str] = None,
+    value_column: Optional[str] = None,
+) -> dict:
     """Decompose a time series into trend, seasonal, and residual components."""
+    if not date_column or not value_column:
+        return {"error": "date_column and value_column are both required"}
+
     df, err = require_df(session_id)
     if err:
         return err

@@ -1,3 +1,4 @@
+from typing import Optional
 from langchain_core.tools import tool
 from ..schemas import DescriptiveStatsInput, GroupByInput, CorrelationInput, ValueCountsInput, OutliersInput
 from ..analyzers import statistical
@@ -5,7 +6,7 @@ from .guards import require_df
 
 
 @tool("descriptive_stats", args_schema=DescriptiveStatsInput)
-def descriptive_stats(session_id: str, columns: list[str] | None = None) -> dict:
+def descriptive_stats(session_id: Optional[str] = None, columns: list[str] | None = None) -> dict:
     """Get mean, std, min, max, count, skew, and kurtosis for numeric columns."""
     df, err = require_df(session_id)
     if err:
@@ -14,8 +15,16 @@ def descriptive_stats(session_id: str, columns: list[str] | None = None) -> dict
 
 
 @tool("group_by_stats", args_schema=GroupByInput)
-def group_by_stats(session_id: str, group_column: str, agg_column: str, agg_func: str = "mean") -> dict:
+def group_by_stats(
+    session_id: Optional[str] = None,
+    group_column: Optional[str] = None,
+    agg_column: Optional[str] = None,
+    agg_func: str = "mean",
+) -> dict:
     """Aggregate a numeric column grouped by a categorical column."""
+    if not group_column or not agg_column:
+        return {"error": "group_column and agg_column are both required"}
+
     df, err = require_df(session_id)
     if err:
         return err
@@ -26,7 +35,7 @@ def group_by_stats(session_id: str, group_column: str, agg_column: str, agg_func
 
 
 @tool("correlation_matrix", args_schema=CorrelationInput)
-def correlation_matrix(session_id: str, columns: list[str] | None = None) -> dict:
+def correlation_matrix(session_id: Optional[str] = None, columns: list[str] | None = None) -> dict:
     """Compute Pearson correlation matrix for numeric columns."""
     df, err = require_df(session_id)
     if err:
@@ -38,8 +47,16 @@ def correlation_matrix(session_id: str, columns: list[str] | None = None) -> dic
 
 
 @tool("value_counts", args_schema=ValueCountsInput)
-def value_counts(session_id: str, column: str, normalize: bool = False, limit: int = 20) -> dict:
+def value_counts(
+    session_id: Optional[str] = None,
+    column: Optional[str] = None,
+    normalize: bool = False,
+    limit: int = 20,
+) -> dict:
     """Get the top N most frequent values in a column."""
+    if not column:
+        return {"error": "column is required"}
+
     df, err = require_df(session_id)
     if err:
         return err
@@ -51,7 +68,7 @@ def value_counts(session_id: str, column: str, normalize: bool = False, limit: i
 
 @tool("outliers_summary", args_schema=OutliersInput)
 def outliers_summary(
-    session_id: str,
+    session_id: Optional[str] = None,
     columns: list[str] | None = None,
     method: str = "iqr",
     threshold: float = 1.5,

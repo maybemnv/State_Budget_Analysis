@@ -7,11 +7,13 @@ import pandas as pd
 _sessions: dict[str, dict] = {}
 
 
-def _resolve_id(raw: str) -> str:
+def _resolve_id(raw: Optional[str]) -> str:
     """Unwrap a session_id that LangChain may deliver as a JSON-wrapped string.
 
     Example: '{"session_id": "abc-123"}' → 'abc-123'
     """
+    if not raw:
+        return ""
     s = raw.strip()
     if s.startswith("{"):
         try:

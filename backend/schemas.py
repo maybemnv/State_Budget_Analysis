@@ -4,12 +4,7 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class SessionUnwrapper(BaseModel):
-    """Mixin to handle the common 'Action Input: {"session_id": "{JSON}"}' LLM error.
-
-    If the LLM puts the whole JSON object string into the session_id field,
-    this validator flattens it so all fields are available at the top level.
-    """
-    session_id: str
+    session_id: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -38,8 +33,8 @@ class DescriptiveStatsInput(SessionUnwrapper):
 
 
 class GroupByInput(SessionUnwrapper):
-    group_column: str
-    agg_column: str
+    group_column: Optional[str] = None
+    agg_column: Optional[str] = None
     agg_func: str = Field(default="mean", pattern="^(mean|median|sum|min|max|count|std)$")
 
 
@@ -48,7 +43,7 @@ class CorrelationInput(SessionUnwrapper):
 
 
 class ValueCountsInput(SessionUnwrapper):
-    column: str
+    column: Optional[str] = None
     normalize: bool = False
     limit: int = Field(default=20, ge=1, le=200)
 
@@ -72,13 +67,13 @@ class ClusteringInput(SessionUnwrapper):
 
 
 class RegressionInput(SessionUnwrapper):
-    target_column: str
+    target_column: Optional[str] = None
     feature_columns: Optional[list[str]] = None
     test_size: float = Field(default=0.2, gt=0.0, lt=1.0)
 
 
 class ClassificationInput(SessionUnwrapper):
-    target_column: str
+    target_column: Optional[str] = None
     feature_columns: Optional[list[str]] = None
     test_size: float = Field(default=0.2, gt=0.0, lt=1.0)
 
@@ -91,20 +86,20 @@ class AnomalyDetectionInput(SessionUnwrapper):
 # --- Time series tool schemas ---
 
 class TimeSeriesInput(SessionUnwrapper):
-    date_column: str
-    value_column: str
+    date_column: Optional[str] = None
+    value_column: Optional[str] = None
 
 
 class ForecastInput(SessionUnwrapper):
-    date_column: str
-    value_column: str
+    date_column: Optional[str] = None
+    value_column: Optional[str] = None
     steps: int = Field(default=12, ge=1)
     model: str = Field(default="arima", pattern="^(arima|prophet)$")
 
 
 class StationarityInput(SessionUnwrapper):
-    date_column: str
-    value_column: str
+    date_column: Optional[str] = None
+    value_column: Optional[str] = None
 
 
 # --- Dataset + chart tool schemas ---

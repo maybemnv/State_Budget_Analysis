@@ -7,7 +7,7 @@ from typing import Optional
 
 
 @tool("describe_dataset", args_schema=DescribeDatasetInput)
-def describe_dataset(session_id: str) -> dict:
+def describe_dataset(session_id: Optional[str] = None) -> dict:
     """Always call this first. Returns schema, dtypes, null counts, sample rows, and column summary."""
     session = get_session(session_id)
     if session is None:
