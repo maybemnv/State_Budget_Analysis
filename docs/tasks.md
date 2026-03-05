@@ -5,50 +5,50 @@ Based on [PRD v2.0](docs/PRD.md).
 ## Phase 1: Backend Foundation (Week 1–2)
 **Goal:** robust FastAPI server with migrated logic and WebSocket support.
 
-- [ ] **Project Setup**
-  - [ ] Initialize FastAPI project structure (`backend/`)
-  - [ ] Configure `uv` for dependency management
-  - [ ] Set up `pyproject.toml` with dependencies (FastAPI, LangChain, Pandas, Scikit-learn, etc.)
+- [x] **Project Setup**
+  - [x] Initialize FastAPI project structure (`backend/`)
+  - [x] Configure `uv` for dependency management
+  - [x] Set up `pyproject.toml` with dependencies (FastAPI, LangChain, Pandas, Scikit-learn, etc.)
 
-- [ ] **Migration**
-  - [ ] Migrate `src/analyzers/statistical_analyzer.py` to `backend/analyzers/`
-  - [ ] Migrate `src/analyzers/ml_analyzer.py` to `backend/analyzers/`
-  - [ ] Migrate `src/time_series/` modules to `backend/analyzers/time_series/`
-  - [ ] Refactor migrated code to be pure functions (remove any Streamlit dependencies)
+- [x] **Migration**
+  - [x] Migrate `src/analyzers/statistical_analyzer.py` to `backend/analyzers/`
+  - [x] Migrate `src/analyzers/ml_analyzer.py` to `backend/analyzers/`
+  - [x] Migrate `src/time_series/` modules to `backend/analyzers/time_series/`
+  - [x] Refactor migrated code to be pure functions (remove any Streamlit dependencies)
 
-- [ ] **Tool Wrapping**
-  - [ ] Create Pydantic input schemas for all analyzer functions
-  - [ ] Wrap functions as LangChain tools (approx. 12 tools)
-  - [ ] Implement `describe_dataset` tool
-  - [ ] Implement `generate_chart_spec` tool
+- [x] **Tool Wrapping**
+  - [x] Create Pydantic input schemas for all analyzer functions
+  - [x] Wrap functions as LangChain tools (approx. 12 tools)
+  - [x] Implement `describe_dataset` tool
+  - [x] Implement `generate_chart_spec` tool
 
-- [ ] **API Core**
-  - [ ] Implement WebSocket endpoint (`/ws/{client_id}`)
-  - [ ] Create streaming callback handler for LangChain to WebSocket
-  - [ ] Implement file upload endpoint (`/upload`) with validation
-  - [ ] Create session management for file/dataframe context
+- [x] **API Core**
+  - [x] Implement WebSocket endpoint (`/ws/{client_id}`)
+  - [x] Create streaming callback handler for LangChain to WebSocket
+  - [x] Implement file upload endpoint (`/upload`) with validation
+  - [x] Create session management for file/dataframe context
 
-- [ ] **Testing**
-  - [ ] Write integration tests for all migrated tools
-  - [ ] Verify tool outputs match v1 outputs
+- [x] **Testing**
+  - [x] Write integration tests for all migrated tools
+  - [x] Verify tool outputs match v1 outputs
 
 ## Phase 2: Agent Core (Week 2–3)
 **Goal:** A smart ReAct agent that can plan and execute analysis.
 
-- [ ] **Agent Implementation**
-  - [ ] Initialize LangChain ReAct agent
-  - [ ] Register the 12-tool registry with the agent
-  - [ ] configure LLM (GPT-4o / Gemini 1.5 Pro) integration
+- [x] **Agent Implementation**
+  - [x] Initialize LangChain ReAct agent
+  - [x] Register the 12-tool registry with the agent
+  - [x] configure LLM (GPT-4o / Gemini 1.5 Pro) integration
 
-- [ ] **Context Management**
-  - [ ] Build Dataset Context Manager (schema, dtypes, sample rows)
-  - [ ] Implement context injection into system prompt
+- [x] **Context Management**
+  - [x] Build Dataset Context Manager (schema, dtypes, sample rows)
+  - [x] Implement context injection into system prompt
 
-- [ ] **Agent Logic**
-  - [ ] Implement structured output parser for "Final Answer"
-  - [ ] Implement error handling (retries on tool failure)
-  - [ ] Create benchmark query set (30 queries) for testing
-  - [ ] Optimize system prompt for tool selection accuracy
+- [x] **Agent Logic**
+  - [x] Implement structured output parser for "Final Answer"
+  - [x] Implement error handling (retries on tool failure)
+  - [x] Create benchmark query set (30 queries) for testing
+  - [x] Optimize system prompt for tool selection accuracy
 
 ## Phase 3: Frontend Shell (Week 3–4)
 **Goal:** Next.js application structure and real-time communication.
@@ -116,4 +116,4 @@ Based on [PRD v2.0](docs/PRD.md).
   - [ ] Create `Dockerfile` for Backend
   - [ ] Create `Dockerfile` for Frontend
   - [ ] Create `docker-compose.yml` for full stack orchestration
-  - [ ] Write `README.md` with setup instructions and demo GIF
+  - [x] Write `README.md` with setup instructions and demo GIF

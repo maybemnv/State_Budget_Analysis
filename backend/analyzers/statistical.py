@@ -4,7 +4,7 @@ import numpy as np
 
 
 def descriptive_stats(df: pd.DataFrame, columns: Optional[list[str]] = None) -> dict:
-    cols = columns or df.select_dtypes(include="number").columns.tolist()
+    cols = columns if columns is not None else df.select_dtypes(include="number").columns.tolist()
     if not cols:
         return {}
     result = df[cols].describe().T

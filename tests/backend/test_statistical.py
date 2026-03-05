@@ -16,13 +16,15 @@ def df() -> pd.DataFrame:
 
 def test_descriptive_stats_returns_expected_keys(df):
     result = statistical.descriptive_stats(df)
-    assert "a" in result
-    assert "mean" in result["a"]
-    assert "skew" in result["a"]
+    # Result is nested as {stat: {column: value}}
+    assert "mean" in result
+    assert "a" in result["mean"]
+    assert "skew" in result
 
 
 def test_descriptive_stats_empty_columns(df):
     result = statistical.descriptive_stats(df, columns=[])
+    # Returns empty dict when no numeric columns
     assert result == {}
 
 
