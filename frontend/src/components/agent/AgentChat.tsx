@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { AgentAvatar } from "./AgentAvatar"
 import { ThoughtStep } from "./ThoughtStep"
 import { ToolCallCard } from "./ToolCallCard"
+import { BackendStatusIndicator } from "@/components/ui/BackendStatusIndicator"
 import { useWebSocket } from "@/hooks/useWebSocket"
 import type { AgentState, WSMessageType, VegaLiteSpec } from "@/lib/types"
 import { Send, Sparkles } from "lucide-react"
@@ -171,13 +172,7 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange }: AgentC
             </p>
           </div>
         </div>
-        <div
-          className={cn(
-            "h-2 w-2 rounded-full",
-            isConnected ? "bg-success animate-pulse" : "bg-text-muted"
-          )}
-          title={isConnected ? "Connected" : "Connecting..."}
-        />
+        <BackendStatusIndicator />
       </div>
 
       {/* Messages */}

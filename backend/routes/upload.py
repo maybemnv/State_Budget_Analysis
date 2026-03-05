@@ -30,7 +30,6 @@ def _parse_file(filename: str, content: bytes) -> pd.DataFrame:
 
 
 def _clean(df: pd.DataFrame) -> pd.DataFrame:
-    """Clean dataframe: strip strings, remove empty rows/cols."""
     obj_cols = df.select_dtypes("object").columns
     df[obj_cols] = df[obj_cols].apply(
         lambda s: s.str.strip().replace(r"^\s*$", pd.NA, regex=True)
@@ -43,17 +42,11 @@ def _clean(df: pd.DataFrame) -> pd.DataFrame:
 
 @router.post("/upload", response_model=UploadResponse)
 async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
-    """Upload a dataset file and create a session.
-
-    Supported formats: CSV, XLSX, XLS, Parquet
-    Max size: 100MB (configurable)
-    """
     filename = file.filename or "unknown"
     suffix = Path(filename).suffix.lower()
     logger.info(f"Upload request: filename={filename}, size={file.size or 'unknown'}")
 
     if suffix not in _ALLOWED:
-        logger.warning(f"Rejected upload: unsupported file type {suffix}")
         raise HTTPException(
             status_code=422,
             detail=f"File type {suffix!r} not supported. Allowed: {_ALLOWED}",
@@ -61,7 +54,6 @@ async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
 
     content = await file.read()
     if len(content) > _MAX_BYTES:
-        logger.warning(f"Rejected upload: file too large ({len(content)} bytes)")
         raise HTTPException(
             status_code=413, detail=f"File exceeds {settings.max_upload_mb}MB limit"
         )
@@ -75,9 +67,7 @@ async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
     df = _clean(df)
     session_id = create_session(df, filename)
 
-    logger.info(
-        f"Upload success: session_id={session_id}, rows={df.shape[0]}, cols={df.shape[1]}"
-    )
+    logger.info(f"Upload success: session_id={session_id}, rows={df.shape[0]}, cols={df.shape[1]}")
 
     return UploadResponse(
         session_id=session_id,
@@ -87,38 +77,9 @@ async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
         column_names=df.columns.tolist(),
     )
 
-    content = await file.read()
-    if len(content) > _MAX_BYTES:
-        raise HTTPException(
-            status_code=413, detail=f"File exceeds {settings.max_upload_mb}MB limit"
-        )
-
-    try:
-        df = _parse_file(file.filename, content)
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Failed to parse file: {e}")
-
-    df = _clean(df)
-    session_id = create_session(df, file.filename)
-
-    return UploadResponse(
-        session_id=session_id,
-        filename=file.filename or "unknown",
-        rows=df.shape[0],
-        columns=df.shape[1],
-        column_names=df.columns.tolist(),
-    )
-
 
 @router.get("/sessions/{session_id}", response_model=SessionInfo)
 def get_session_info(session_id: str) -> dict:
-    """Get detailed session information including column types.
-
-    Returns metadata needed for the frontend sidebar:
-    - filename, shape, columns
-    - dtypes for each column
-    - numeric_columns, categorical_columns for quick filtering
-    """
     session = get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -138,7 +99,6 @@ def get_session_info(session_id: str) -> dict:
 
 @router.delete("/sessions/{session_id}")
 def delete_session_endpoint(session_id: str) -> dict:
-    """Delete a session and free resources."""
     session = get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")

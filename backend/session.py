@@ -1,16 +1,15 @@
 import json
 import uuid
-import pickle
+import io
 import base64
 from pathlib import Path
 from typing import Optional
 import pandas as pd
 
-# Session storage file
 SESSIONS_FILE = Path(__file__).parent / ".sessions.json"
 _sessions: dict[str, dict] = {}
 
-# Load sessions from disk on startup
+
 def _load_sessions():
     """Load sessions from disk if file exists."""
     global _sessions
@@ -18,12 +17,10 @@ def _load_sessions():
         try:
             with open(SESSIONS_FILE, 'r') as f:
                 data = json.load(f)
-                # Convert base64 encoded DataFrames back to pandas
                 for session_id, session_data in data.items():
                     if 'df_base64' in session_data:
-                        # Decode DataFrame from base64
                         df_bytes = base64.b64decode(session_data['df_base64'])
-                        session_data['df'] = pd.read_pickle(pd.io.common.BytesIO(df_bytes))
+                        session_data['df'] = pd.read_pickle(io.BytesIO(df_bytes))
                         del session_data['df_base64']
                 _sessions = data
                 print(f"Loaded {len(_sessions)} sessions from disk")
@@ -33,18 +30,15 @@ def _load_sessions():
     else:
         _sessions = {}
 
-# Save sessions to disk
 def _save_sessions():
-    """Save sessions to disk."""
     try:
         data = {}
         for session_id, session_data in _sessions.items():
-            # Create a copy without the DataFrame
             session_copy = session_data.copy()
             if 'df' in session_data:
-                # Encode DataFrame as base64
-                df_bytes = session_data['df'].to_pickle()
-                session_copy['df_base64'] = base64.b64encode(df_bytes).decode('utf-8')
+                buf = io.BytesIO()
+                session_data['df'].to_pickle(buf)
+                session_copy['df_base64'] = base64.b64encode(buf.getvalue()).decode('utf-8')
                 del session_copy['df']
             data[session_id] = session_copy
         
@@ -53,7 +47,6 @@ def _save_sessions():
     except Exception as e:
         print(f"Failed to save sessions: {e}")
 
-# Load sessions on module import
 _load_sessions()
 
 
