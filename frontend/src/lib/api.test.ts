@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock global fetch
 const mockFetch = vi.fn()
@@ -145,20 +145,33 @@ describe('api', () => {
 })
 
 describe('WebSocket client', () => {
-  let mockWebSocketInstance: any
+  let mockWsInstance: {
+    send: ReturnType<typeof vi.fn>
+    close: ReturnType<typeof vi.fn>
+    onopen: (() => void) | null
+    onclose: (() => void) | null
+    onmessage: ((event: { data: string }) => void) | null
+    onerror: ((error: Event) => void) | null
+    readyState: number
+  }
 
   beforeEach(() => {
-    mockWebSocketInstance = {
+    mockWsInstance = {
       send: vi.fn(),
       close: vi.fn(),
       onopen: null,
       onclose: null,
       onmessage: null,
       onerror: null,
-      readyState: 1, // OPEN
+      readyState: 1, // WebSocket.OPEN
     }
 
-    vi.stubGlobal('WebSocket', vi.fn(() => mockWebSocketInstance))
+    const MockWs = vi.fn(() => mockWsInstance)
+    MockWs.OPEN = 1
+    MockWs.CONNECTING = 0
+    MockWs.CLOSING = 2
+    MockWs.CLOSED = 3
+    vi.stubGlobal('WebSocket', MockWs)
   })
 
   afterEach(() => {
@@ -166,12 +179,12 @@ describe('WebSocket client', () => {
   })
 
   it('creates WebSocket connection with correct URL', () => {
-    const ws = createWebSocketClient({
+    createWebSocketClient({
       sessionId: 'test-123',
       onConnect: vi.fn(),
     })
 
-    expect(vi.mocked(WebSocket)).toHaveBeenCalledWith(`${WS_BASE_URL}/ws/test-123`)
+    expect(WebSocket).toHaveBeenCalledWith(`${WS_BASE_URL}/ws/test-123`)
   })
 
   it('calls onConnect callback when connection opens', () => {
@@ -181,20 +194,23 @@ describe('WebSocket client', () => {
       onConnect,
     })
 
-    // Simulate connection open
-    mockWebSocketInstance.onopen()
+    mockWsInstance.onopen?.()
 
     expect(onConnect).toHaveBeenCalled()
   })
 
-  it('sends message correctly', () => {
+  it('sends message correctly when WebSocket is open', () => {
+    // Create client and set readyState to OPEN
     const client = createWebSocketClient({
       sessionId: 'test-123',
     })
-
+    
+    // Verify WebSocket is created in OPEN state
+    expect(mockWsInstance.readyState).toBe(1) // WebSocket.OPEN
+    
     client.send('Hello world')
 
-    expect(mockWebSocketInstance.send).toHaveBeenCalledWith(
+    expect(mockWsInstance.send).toHaveBeenCalledWith(
       JSON.stringify({ message: 'Hello world' })
     )
   })
@@ -204,23 +220,22 @@ describe('WebSocket client', () => {
     const onChart = vi.fn()
     const onAnswer = vi.fn()
 
-    const client = createWebSocketClient({
+    createWebSocketClient({
       sessionId: 'test-123',
       onThought,
       onChart,
       onAnswer,
     })
 
-    // Simulate receiving messages
-    mockWebSocketInstance.onmessage({
+    mockWsInstance.onmessage?.({
       data: JSON.stringify({ type: 'thought', content: 'Thinking...' }),
     })
 
-    mockWebSocketInstance.onmessage({
+    mockWsInstance.onmessage?.({
       data: JSON.stringify({ type: 'chart', spec: { mark: 'bar' } }),
     })
 
-    mockWebSocketInstance.onmessage({
+    mockWsInstance.onmessage?.({
       data: JSON.stringify({ type: 'answer', content: 'Final answer' }),
     })
 
@@ -237,7 +252,7 @@ describe('WebSocket client', () => {
       onError,
     })
 
-    mockWebSocketInstance.onmessage({
+    mockWsInstance.onmessage?.({
       data: JSON.stringify({ type: 'error', message: 'Something went wrong' }),
     })
 
@@ -252,7 +267,7 @@ describe('WebSocket client', () => {
       onDone,
     })
 
-    mockWebSocketInstance.onmessage({
+    mockWsInstance.onmessage?.({
       data: JSON.stringify({ type: 'done' }),
     })
 
@@ -266,6 +281,6 @@ describe('WebSocket client', () => {
 
     client.close()
 
-    expect(mockWebSocketInstance.close).toHaveBeenCalled()
+    expect(mockWsInstance.close).toHaveBeenCalled()
   })
 })

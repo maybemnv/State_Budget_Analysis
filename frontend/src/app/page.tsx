@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Upload, FileSpreadsheet, CheckCircle2, Loader2, Sparkles } from "lucide-react"
+import { Upload, FileSpreadsheet, CheckCircle2, Loader2, Sparkles, AlertCircle } from "lucide-react"
+import { api } from "@/lib/api"
 
 type UploadStateType = "idle" | "uploading" | "parsing" | "done" | "error"
 
@@ -14,39 +15,47 @@ export default function HomePage() {
   const [uploadState, setUploadState] = useState<UploadStateType>("idle")
   const [progress, setProgress] = useState(0)
   const [fileName, setFileName] = useState("")
+  const [error, setError] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleFileSelect = (file: File) => {
+  const handleFileSelect = async (file: File) => {
     setFileName(file.name)
     setUploadState("uploading" as UploadStateType)
     setProgress(0)
+    setError("")
 
-    // Simulate upload progress
-    const progressInterval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 80) {
-          clearInterval(progressInterval)
-          return 80
-        }
-        return prev + 10
-      })
-    }, 100)
+    try {
+      // Simulate progress during upload
+      const progressInterval = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 90) {
+            clearInterval(progressInterval)
+            return 90
+          }
+          return prev + 10
+        })
+      }, 200)
 
-    // Simulate upload complete and parsing
-    setTimeout(() => {
+      // Upload to backend
+      const response = await api.upload(file)
+      
       clearInterval(progressInterval)
       setProgress(100)
       setUploadState("parsing" as UploadStateType)
 
-      // Simulate parsing with row cascade
-      setTimeout(() => {
-        setUploadState("done" as UploadStateType)
-        // Redirect to workspace after a brief delay
-        setTimeout(() => {
-          router.push("/workspace/sess_" + Date.now())
-        }, 1500)
-      }, 1000)
-    }, 2000)
+      // Brief pause to show completion
+      await new Promise(resolve => setTimeout(resolve, 800))
+      
+      setUploadState("done" as UploadStateType)
+      
+      // Redirect to workspace with real session ID
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      router.push(`/workspace/${response.session_id}`)
+    } catch (err) {
+      console.error('Upload error:', err)
+      setError(err instanceof Error ? err.message : 'Upload failed')
+      setUploadState("error" as UploadStateType)
+    }
   }
 
   const onDrop = (e: React.DragEvent) => {
@@ -54,6 +63,8 @@ export default function HomePage() {
     const file = e.dataTransfer.files[0]
     if (file && file.name.match(/\.(csv|xlsx|xls|parquet)$/)) {
       handleFileSelect(file)
+    } else {
+      setError('Unsupported file type. Please upload CSV, XLSX, XLS, or Parquet.')
     }
   }
 
@@ -127,7 +138,7 @@ export default function HomePage() {
               <h3 className="mb-2 text-lg font-medium text-text-primary">
                 {fileName}
               </h3>
-              <p className="mb-4 text-sm text-text-muted">Uploading...</p>
+              <p className="mb-4 text-sm text-text-muted">Uploading to server...</p>
               <div className="w-full max-w-xs">
                 <div className="h-2 w-full overflow-hidden rounded-full bg-border">
                   <div
@@ -150,27 +161,7 @@ export default function HomePage() {
               <h3 className="mb-2 text-lg font-medium text-text-primary">
                 {fileName}
               </h3>
-              <p className="mb-4 text-sm text-text-muted">Parsing rows...</p>
-
-              {/* Fake table preview with cascade animation */}
-              <div className="w-full max-w-md overflow-hidden rounded-md border border-border bg-elevated">
-                <div className="border-b border-border bg-surface/50 px-4 py-2 text-xs font-medium text-text-muted">
-                  date • agency • category • amount • year
-                </div>
-                <div className="p-4 font-mono text-xs text-text-secondary">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div
-                      key={i}
-                      className="animate-fade-in-up py-1"
-                      style={{ animationDelay: `${i * 100}ms` }}
-                    >
-                      2024-0{i} • AG-00{i} • Category {String.fromCharCode(64 + i)} • $
-                      {(Math.random() * 1000).toFixed(2)}K • 2024
-                    </div>
-                  ))}
-                  <div className="py-1 text-text-muted">...</div>
-                </div>
-              </div>
+              <p className="mb-4 text-sm text-text-muted">Processing dataset...</p>
             </div>
           )}
 
@@ -180,7 +171,7 @@ export default function HomePage() {
                 <CheckCircle2 className="h-8 w-8 text-success" />
               </div>
               <h3 className="mb-2 text-lg font-medium text-text-primary">
-                Ready to analyze!
+                Dataset ready!
               </h3>
               <p className="text-sm text-text-muted">
                 Redirecting to workspace...
@@ -191,22 +182,23 @@ export default function HomePage() {
           {uploadState === "error" && (
             <div className="flex flex-col items-center py-12">
               <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-error/10">
-                <Upload className="h-8 w-8 text-error" />
+                <AlertCircle className="h-8 w-8 text-error" />
               </div>
               <h3 className="mb-2 text-lg font-medium text-text-primary">
                 Upload failed
               </h3>
-              <p className="text-sm text-text-muted">
-                Please try again or contact support.
+              <p className="text-sm text-text-muted mb-4">
+                {error || 'Please try again or contact support.'}
               </p>
               <Button
                 variant="outline"
                 onClick={() => {
-                  setUploadState("idle" as UploadStateType)
+                  setUploadState("idle")
                   setFileName("")
                   setProgress(0)
+                  setError("")
                 }}
-                className="mt-4 border-border bg-surface/50"
+                className="border-border bg-surface/50"
               >
                 Try Again
               </Button>

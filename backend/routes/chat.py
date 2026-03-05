@@ -13,14 +13,19 @@ router = APIRouter(tags=["chat"])
 @router.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
     """WebSocket endpoint for real-time agent communication.
-    
+
     Accepts: { message: string }
     Streams: thought, tool_call, tool_result, chart, answer, error, done
     """
-    if get_session(session_id) is None:
+    print(f"WebSocket connection attempt for session: {session_id}")
+    
+    session = get_session(session_id)
+    if session is None:
+        print(f"Session not found: {session_id}")
         await websocket.close(code=4004, reason="Session not found")
         return
 
+    print(f"Session found, accepting connection: {session_id}")
     await websocket.accept()
     callback = WebSocketStreamingCallback(websocket)
 
@@ -33,6 +38,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
             except json.JSONDecodeError:
                 message = raw
 
+            print(f"Received message: {message[:50]}...")
             result = await run_agent(session_id, message)
             parsed = parse_output(result.get("output", ""))
 
@@ -47,8 +53,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
             await callback._send({"type": "done"})
 
     except WebSocketDisconnect:
-        pass
+        print(f"WebSocket disconnected: {session_id}")
     except Exception as e:
+        print(f"WebSocket error: {e}")
         try:
             await callback._send({
                 "type": "error",

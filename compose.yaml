@@ -1,34 +1,16 @@
 services:
-  db:
-    image: postgres:16-alpine
-    restart: always
-    environment:
-      POSTGRES_USER: ${DB_USER:-datalens}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-datalens_pass}
-      POSTGRES_DB: ${DB_NAME:-datalens_db}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U datalens -d datalens_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
     restart: always
     environment:
-      DATABASE_URL: postgresql://${DB_USER:-datalens}:${DB_PASSWORD:-datalens_pass}@db:5432/${DB_NAME:-datalens_db}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
-    depends_on:
-      db:
-        condition: service_healthy
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-100}
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app/backend
+      - backend_data:/app/data
 
   frontend:
     build:
@@ -36,11 +18,12 @@ services:
       dockerfile: Dockerfile
     restart: always
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8000}
     depends_on:
       - backend
     ports:
       - "3000:3000"
 
 volumes:
-  postgres_data:
+  backend_data:

@@ -129,7 +129,7 @@ class TestSessionEndpoint:
         assert body["session_id"] == session_id
         assert "columns" in body
         assert "dtypes" in body
-        assert "categorical_columns" in body
+        assert "filename" in body
 
     async def test_get_session_not_found(self, client):
         r = await client.get("/sessions/nonexistent-id")

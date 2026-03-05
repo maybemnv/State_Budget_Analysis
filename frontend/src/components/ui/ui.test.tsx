@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -12,10 +13,11 @@ describe('Button', () => {
     expect(screen.getByText('Click me')).toBeInTheDocument()
   })
 
-  it('handles click events', () => {
+  it('handles click events', async () => {
+    const user = userEvent.setup()
     const handleClick = vi.fn()
     render(<Button onClick={handleClick}>Click me</Button>)
-    screen.getByRole('button').click()
+    await user.click(screen.getByRole('button'))
     expect(handleClick).toHaveBeenCalled()
   })
 
@@ -65,13 +67,13 @@ describe('Input', () => {
     expect(screen.getByRole('textbox')).toBeInTheDocument()
   })
 
-  it('handles value changes', () => {
+  it('handles value changes', async () => {
+    const user = userEvent.setup()
     const handleChange = vi.fn()
     render(<Input onChange={handleChange} />)
     const input = screen.getByRole('textbox')
     
-    input.focus()
-    input.setValue('test value')
+    await user.type(input, 'test value')
     
     expect(handleChange).toHaveBeenCalled()
   })
@@ -83,7 +85,13 @@ describe('Input', () => {
 
   it('accepts type prop', () => {
     render(<Input type="password" />)
-    expect(screen.getByRole('textbox')).toHaveAttribute('type', 'password')
+    const input = document.querySelector('input')
+    expect(input).toHaveAttribute('type', 'password')
+  })
+
+  it('can be disabled', () => {
+    render(<Input disabled />)
+    expect(screen.getByRole('textbox')).toBeDisabled()
   })
 })
 
@@ -93,9 +101,10 @@ describe('Card', () => {
     expect(screen.getByText('Card content')).toBeInTheDocument()
   })
 
-  it('renders with title', () => {
+  it('renders with title prop', () => {
     render(<Card title="Card Title">Content</Card>)
-    expect(screen.getByText('Card Title')).toBeInTheDescription()
+    const card = screen.getByTitle('Card Title')
+    expect(card).toBeInTheDocument()
   })
 })
 

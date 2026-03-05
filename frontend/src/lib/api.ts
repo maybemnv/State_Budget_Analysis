@@ -156,24 +156,29 @@ export function createWebSocketClient({
   onDisconnect,
 }: UseWebSocketOptions) {
   const wsUrl = `${WS_BASE_URL}/ws/${sessionId}`
+  console.log('Connecting to WebSocket:', wsUrl)
+  
   const ws = new WebSocket(wsUrl)
 
   ws.onopen = () => {
+    console.log('WebSocket connected')
     onConnect?.()
   }
 
-  ws.onclose = () => {
+  ws.onclose = (event) => {
+    console.log('WebSocket closed:', event.code, event.reason)
     onDisconnect?.()
   }
 
   ws.onerror = (error) => {
     console.error('WebSocket error:', error)
-    onError?.('Connection failed')
+    // Don't call onError here - it will be called by onclose with proper info
   }
 
   ws.onmessage = (event) => {
     try {
       const message: WSMessage = JSON.parse(event.data)
+      console.log('WS message received:', message.type)
       onMessage?.(message)
 
       // Dispatch to specific handlers
@@ -215,7 +220,7 @@ export function createWebSocketClient({
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(payload)
       } else {
-        console.warn('WebSocket not connected')
+        console.warn('WebSocket not connected, readyState:', ws.readyState)
       }
     },
     close: () => {

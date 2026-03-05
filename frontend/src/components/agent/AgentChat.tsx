@@ -150,6 +150,9 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange }: AgentC
     "Cluster the data into groups",
   ]
 
+  // Show connection error message
+  const showConnectionError = !isConnected && messages.length === 0
+
   return (
     <div className="flex h-full flex-col">
       {/* Header with agent avatar */}
@@ -163,7 +166,8 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange }: AgentC
               {agentState === "executing" && "Running analysis..."}
               {agentState === "done" && "Ready"}
               {agentState === "error" && "Encountered an error"}
-              {agentState === "idle" && (isConnected ? "Connected" : "Connecting...")}
+              {agentState === "idle" && isConnected && "Connected"}
+              {agentState === "idle" && !isConnected && "Connecting..."}
             </p>
           </div>
         </div>
@@ -172,13 +176,23 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange }: AgentC
             "h-2 w-2 rounded-full",
             isConnected ? "bg-success animate-pulse" : "bg-text-muted"
           )}
+          title={isConnected ? "Connected" : "Connecting..."}
         />
       </div>
 
       {/* Messages */}
       <ScrollArea className="flex-1 px-4 py-4">
         <div className="space-y-4">
-          {messages.length === 0 && (
+          {showConnectionError && (
+            <div className="rounded-lg border border-error/30 bg-error/5 p-4 text-center">
+              <p className="text-sm text-error">Connection failed</p>
+              <p className="mt-1 text-xs text-text-muted">
+                Make sure the backend server is running at http://localhost:8000
+              </p>
+            </div>
+          )}
+          
+          {messages.length === 0 && !showConnectionError && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Sparkles className="mb-4 h-12 w-12 text-agent/50" />
               <h3 className="mb-2 text-lg font-medium text-text-primary">Start a conversation</h3>
@@ -193,11 +207,15 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange }: AgentC
                       setInput(query)
                       inputRef.current?.focus()
                     }}
-                    className="rounded-full border border-border bg-surface/50 px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-agent/50 hover:text-text-primary"
+                    disabled={!isConnected}
+                    className="rounded-full border border-border bg-surface/50 px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-agent/50 hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {query}
                   </button>
                 ))}
+              </div>
+            </div>
+          )}
               </div>
             </div>
           )}
