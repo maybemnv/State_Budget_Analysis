@@ -42,6 +42,20 @@ def get_df(session_id: str) -> Optional[pd.DataFrame]:
     return session["df"] if session else None
 
 
+def delete_session(session_id: str) -> bool:
+    """Delete a session and free memory."""
+    resolved_id = _resolve_id(session_id)
+    if resolved_id in _sessions:
+        del _sessions[resolved_id]
+        return True
+    return False
+
+
+def list_sessions() -> list[str]:
+    """List all active session IDs."""
+    return list(_sessions.keys())
+
+
 def _build_metadata(df: pd.DataFrame, filename: str) -> dict:
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     categorical_cols = df.select_dtypes(exclude="number").columns.tolist()

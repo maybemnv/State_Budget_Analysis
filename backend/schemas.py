@@ -126,6 +126,14 @@ class UploadResponse(BaseModel):
     column_names: list[str]
 
 
+class SessionInfo(BaseModel):
+    session_id: str
+    filename: str
+    shape: list[int]  # [rows, columns]
+    columns: list[str]
+    dtypes: dict[str, str]
+
+
 class ChatRequest(BaseModel):
     message: str
 

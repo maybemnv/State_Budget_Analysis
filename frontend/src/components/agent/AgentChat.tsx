@@ -45,33 +45,33 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange }: AgentC
 
   const { sendMessage, isConnected } = useWebSocket({
     sessionId,
-    onThought: (msg) => {
+    onThought: (content) => {
       handleAgentStateChange("thinking")
       setMessages((prev) => [
         ...prev,
         {
           id: `thought-${Date.now()}`,
           type: "thought",
-          content: msg.content,
+          content: content,
           timestamp: new Date(),
         },
       ])
     },
-    onToolCall: (msg) => {
+    onToolCall: (tool, args) => {
       handleAgentStateChange("executing")
       setMessages((prev) => [
         ...prev,
         {
           id: `tool-${Date.now()}`,
           type: "tool_call",
-          tool: msg.tool,
-          args: msg.args,
+          tool: tool,
+          args: args,
           content: "",
           timestamp: new Date(),
         },
       ])
     },
-    onToolResult: (msg) => {
+    onToolResult: (tool, result) => {
       setMessages((prev) => {
         // Find the last tool_call and update it with result
         const lastToolCallIndex = [...prev].reverse().findIndex((m) => m.type === "tool_call")
@@ -79,35 +79,35 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange }: AgentC
 
         const actualIndex = prev.length - 1 - lastToolCallIndex
         const updated = [...prev]
-        updated[actualIndex] = { ...updated[actualIndex], type: "tool_result" as const, content: msg.result }
+        updated[actualIndex] = { ...updated[actualIndex], type: "tool_result" as const, content: result }
         return updated
       })
     },
-    onAnswer: (msg) => {
+    onAnswer: (content) => {
       handleAgentStateChange("done")
       setMessages((prev) => [
         ...prev,
         {
           id: `answer-${Date.now()}`,
           type: "answer",
-          content: msg.content,
+          content: content,
           timestamp: new Date(),
         },
       ])
       // Reset to idle after a delay
       setTimeout(() => handleAgentStateChange("idle"), 2000)
     },
-    onChart: (msg) => {
-      onChartSpec?.(msg.spec)
+    onChart: (spec) => {
+      onChartSpec?.(spec as VegaLiteSpec)
     },
-    onError: (msg) => {
+    onError: (message) => {
       handleAgentStateChange("error")
       setMessages((prev) => [
         ...prev,
         {
           id: `error-${Date.now()}`,
           type: "error",
-          content: msg.message,
+          content: message,
           timestamp: new Date(),
         },
       ])

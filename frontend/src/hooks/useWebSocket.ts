@@ -1,18 +1,18 @@
 "use client"
 
 import { useEffect, useRef, useCallback, useState } from "react"
-import type { WSMessageType, ThoughtMessage, ToolCallMessage, ToolResultMessage, ChartSpecMessage, AnswerMessage, ErrorMessage } from "@/lib/types"
+import { createWebSocketClient, type WSMessage, type UseWebSocketOptions as ApiOptions } from "@/lib/api"
 
 export interface UseWebSocketOptions {
   sessionId: string
   baseUrl?: string
-  onMessage?: (message: WSMessageType) => void
-  onThought?: (message: ThoughtMessage) => void
-  onToolCall?: (message: ToolCallMessage) => void
-  onToolResult?: (message: ToolResultMessage) => void
-  onChart?: (message: ChartSpecMessage) => void
-  onAnswer?: (message: AnswerMessage) => void
-  onError?: (message: ErrorMessage) => void
+  onMessage?: (message: WSMessage) => void
+  onThought?: (content: string) => void
+  onToolCall?: (tool: string, args: Record<string, unknown>) => void
+  onToolResult?: (tool: string, result: unknown) => void
+  onChart?: (spec: Record<string, unknown>) => void
+  onAnswer?: (content: string) => void
+  onError?: (message: string) => void
   onDone?: () => void
   onConnect?: () => void
   onDisconnect?: () => void
@@ -23,16 +23,15 @@ export interface UseWebSocketReturn {
   isConnected: boolean
   isConnecting: boolean
   error: string | null
-  messages: WSMessageType[]
+  messages: WSMessage[]
 }
 
 /**
  * useWebSocket — Hook for real-time communication with the DataLens backend.
- * Handles reconnection, message queuing, and typed message dispatch.
+ * Uses WebSocket streaming for agent responses.
  */
 export function useWebSocket({
   sessionId,
-  baseUrl = "",
   onMessage,
   onThought,
   onToolCall,
@@ -44,101 +43,62 @@ export function useWebSocket({
   onConnect,
   onDisconnect,
 }: UseWebSocketOptions): UseWebSocketReturn {
-  const wsRef = useRef<WebSocket | null>(null)
+  const clientRef = useRef<ReturnType<typeof createWebSocketClient> | null>(null)
   const [isConnected, setIsConnected] = useState(false)
-  const [isConnecting, setIsConnecting] = useState(false)
+  const [isConnecting, setIsConnecting] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [messages, setMessages] = useState<WSMessageType[]>([])
-  const messageQueue = useRef<string[]>([])
+  const [messages, setMessages] = useState<WSMessage[]>([])
 
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return
+    if (clientRef.current) {
+      clientRef.current.close()
+    }
 
     setIsConnecting(true)
     setError(null)
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
-    const wsUrl = `${protocol}//${window.location.host}${baseUrl}/ws/${sessionId}`
-
-    const ws = new WebSocket(wsUrl)
-
-    ws.onopen = () => {
-      setIsConnected(true)
-      setIsConnecting(false)
-      onConnect?.()
-
-      // Flush message queue
-      messageQueue.current.forEach((msg) => ws.send(msg))
-      messageQueue.current = []
-    }
-
-    ws.onclose = () => {
-      setIsConnected(false)
-      setIsConnecting(false)
-      onDisconnect?.()
-    }
-
-    ws.onerror = () => {
-      setError("WebSocket connection failed")
-      setIsConnecting(false)
-    }
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data) as WSMessageType
-        setMessages((prev) => [...prev, data])
-        onMessage?.(data)
-
-        // Dispatch to specific handlers
-        switch (data.type) {
-          case "thought":
-            onThought?.(data)
-            break
-          case "tool_call":
-            onToolCall?.(data)
-            break
-          case "tool_result":
-            onToolResult?.(data)
-            break
-          case "chart":
-            onChart?.(data)
-            break
-          case "answer":
-            onAnswer?.(data)
-            break
-          case "error":
-            onError?.(data)
-            break
-          case "done":
-            onDone?.()
-            break
-        }
-      } catch (e) {
-        console.error("Failed to parse WebSocket message:", e)
-      }
-    }
-
-    wsRef.current = ws
-  }, [sessionId, baseUrl, onMessage, onThought, onToolCall, onToolResult, onChart, onAnswer, onError, onDone, onConnect, onDisconnect])
+    clientRef.current = createWebSocketClient({
+      sessionId,
+      onMessage: (msg) => {
+        setMessages((prev) => [...prev, msg])
+        onMessage?.(msg)
+      },
+      onThought,
+      onToolCall,
+      onToolResult,
+      onChart,
+      onAnswer,
+      onError: (msg) => {
+        setError(msg)
+        onError?.(msg)
+      },
+      onDone: () => {
+        onDone?.()
+      },
+      onConnect: () => {
+        setIsConnected(true)
+        setIsConnecting(false)
+        onConnect?.()
+      },
+      onDisconnect: () => {
+        setIsConnected(false)
+        setIsConnecting(false)
+        onDisconnect?.()
+      },
+    })
+  }, [sessionId, onMessage, onThought, onToolCall, onToolResult, onChart, onAnswer, onError, onDone, onConnect, onDisconnect])
 
   useEffect(() => {
     connect()
 
     return () => {
-      wsRef.current?.close()
+      clientRef.current?.close()
     }
   }, [connect])
 
   const sendMessage = useCallback(
     (message: string | Record<string, unknown>) => {
-      const payload = typeof message === "string" ? message : JSON.stringify(message)
-
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(payload)
-      } else {
-        // Queue for later
-        messageQueue.current.push(payload)
-      }
+      clientRef.current?.send(message)
     },
     []
   )
