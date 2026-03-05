@@ -216,9 +216,6 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange }: AgentC
               </div>
             </div>
           )}
-              </div>
-            </div>
-          )}
 
           {messages.map((msg, index) => {
             if (msg.type === "user") {
