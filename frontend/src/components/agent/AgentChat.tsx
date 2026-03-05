@@ -66,6 +66,7 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange }: AgentC
           type: "tool_call",
           tool: msg.tool,
           args: msg.args,
+          content: "",
           timestamp: new Date(),
         },
       ])

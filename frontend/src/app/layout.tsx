@@ -32,18 +32,7 @@ export default function RootLayout({
       </head>
       <body
         className={`${geistMono.variable} ${jetbrainsMono.variable} font-body antialiased`}
-        style={{ fontFamily: 'var(--font-body), monospace' }}
       >
-        <style jsx global>{`
-          :root {
-            --font-heading: 'Satoshi', sans-serif;
-            --font-body: var(--font-geist-mono), monospace;
-            --font-code: var(--font-jetbrains-mono), monospace;
-          }
-          h1, h2, h3, h4, h5, h6 {
-            font-family: var(--font-heading), sans-serif !important;
-          }
-        `}</style>
         {children}
       </body>
     </html>
