@@ -1,4 +1,4 @@
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     model_name: str = "gemini-2.5-flash"
     max_upload_mb: int = 100
     session_ttl_seconds: int = 3600
+    debug: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

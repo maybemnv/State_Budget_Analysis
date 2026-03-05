@@ -167,6 +167,14 @@ export function createWebSocketClient({
 
   ws.onclose = (event) => {
     console.log('WebSocket closed:', event.code, event.reason)
+    
+    // Provide helpful error messages
+    if (event.code === 4004) {
+      console.error('Session not found on backend. The session may have expired or been deleted.')
+    } else if (event.code === 1006) {
+      console.error('WebSocket connection lost. Check if backend server is running.')
+    }
+    
     onDisconnect?.()
   }
 

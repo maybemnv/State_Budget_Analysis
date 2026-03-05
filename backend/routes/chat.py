@@ -1,11 +1,17 @@
 import json
+import logging
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import JSONResponse
+
 from ..session import get_session
 from ..agent.analyst_agent import run_agent
 from ..agent.output_parser import parse_output
 from ..streaming import WebSocketStreamingCallback
 from ..schemas import ChatRequest, ChatResponse, SessionInfo
+
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["chat"])
 
@@ -17,15 +23,15 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
     Accepts: { message: string }
     Streams: thought, tool_call, tool_result, chart, answer, error, done
     """
-    print(f"WebSocket connection attempt for session: {session_id}")
-    
+    logger.info(f"WebSocket connection attempt: session_id={session_id}")
+
     session = get_session(session_id)
     if session is None:
-        print(f"Session not found: {session_id}")
+        logger.warning(f"WebSocket rejected: session not found: {session_id}")
         await websocket.close(code=4004, reason="Session not found")
         return
 
-    print(f"Session found, accepting connection: {session_id}")
+    logger.info(f"WebSocket accepted: session_id={session_id}")
     await websocket.accept()
     callback = WebSocketStreamingCallback(websocket)
 
@@ -38,38 +44,37 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
             except json.JSONDecodeError:
                 message = raw
 
-            print(f"Received message: {message[:50]}...")
+            logger.debug(f"WS message: {message[:100]}...")
             result = await run_agent(session_id, message)
             parsed = parse_output(result.get("output", ""))
 
-            # Send chart spec if present
             if parsed["chart_spec"]:
-                await callback._send({
-                    "type": "chart",
-                    "spec": parsed["chart_spec"]
-                })
+                await callback._send({"type": "chart", "spec": parsed["chart_spec"]})
 
-            # Signal completion
             await callback._send({"type": "done"})
 
     except WebSocketDisconnect:
-        print(f"WebSocket disconnected: {session_id}")
+        logger.info(f"WebSocket disconnected: session_id={session_id}")
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        logger.exception(f"WebSocket error: session_id={session_id}, error={e}")
         try:
-            await callback._send({
-                "type": "error",
-                "message": f"Server error: {str(e)}"
-            })
-        except:
+            await callback._send(
+                {"type": "error", "message": f"Server error: {str(e)}"}
+            )
+        except Exception:
             pass
 
 
 @router.post("/chat/{session_id}", response_model=ChatResponse)
 async def chat(session_id: str, body: ChatRequest) -> ChatResponse:
     """HTTP chat endpoint (non-streaming)."""
+    logger.info(
+        f"Chat request: session_id={session_id}, message={body.message[:50]}..."
+    )
+
     session = get_session(session_id)
     if session is None:
+        logger.warning(f"Chat rejected: session not found: {session_id}")
         raise HTTPException(status_code=404, detail="Session not found")
 
     result = await run_agent(session_id, body.message)
@@ -78,11 +83,19 @@ async def chat(session_id: str, body: ChatRequest) -> ChatResponse:
     steps = [
         {
             "tool": action.tool,
-            "args": action.tool_input if isinstance(action.tool_input, dict) else {"input": action.tool_input},
-            "result": observation if isinstance(observation, dict) else {"output": str(observation)}
+            "args": action.tool_input
+            if isinstance(action.tool_input, dict)
+            else {"input": action.tool_input},
+            "result": observation
+            if isinstance(observation, dict)
+            else {"output": str(observation)},
         }
         for action, observation in result.get("intermediate_steps", [])
     ]
+
+    logger.info(
+        f"Chat response: session_id={session_id}, has_error={parsed['has_error']}"
+    )
 
     return ChatResponse(
         answer=parsed["answer"],
@@ -98,12 +111,12 @@ def get_session_info(session_id: str) -> dict:
     session = get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     meta = session["metadata"]
     return {
         "session_id": session_id,
         "filename": meta["filename"],
-        "shape": list(meta["shape"]),  # Convert tuple to list for JSON
+        "shape": list(meta["shape"]),
         "columns": meta["columns"],
         "dtypes": meta["dtypes"],
     }
@@ -113,9 +126,11 @@ def get_session_info(session_id: str) -> dict:
 def delete_session(session_id: str) -> dict:
     """Delete a session and free resources."""
     from ..session import delete_session as _delete
+
     session = get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     _delete(session_id)
+    logger.info(f"Session deleted: session_id={session_id}")
     return {"status": "deleted", "session_id": session_id}

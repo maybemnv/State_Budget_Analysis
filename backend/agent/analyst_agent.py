@@ -1,7 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+import logging
+
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain.agents.agent import ExceptionTool
@@ -10,6 +17,9 @@ from langchain_core.prompts import PromptTemplate
 
 from ..config import settings
 from ..tools import ALL_TOOLS
+
+
+logger = logging.getLogger(__name__)
 
 _TOOL_GUIDE = """\
 Tool selection guide — use the FIRST matching rule:
@@ -102,10 +112,26 @@ async def run_agent(session_id: str, message: str) -> dict:
     Retries up to 3 times on OutputParserException with exponential back-off.
     Returns an error dict on final failure instead of raising.
     """
+    logger.info(
+        f"Agent run started: session_id={session_id}, message={message[:50]}..."
+    )
+
     executor = _build_executor(session_id)
     try:
-        return await _invoke(executor, {"input": message})
+        result = await _invoke(executor, {"input": message})
+        logger.info(
+            f"Agent run completed: session_id={session_id}, steps={len(result.get('intermediate_steps', []))}"
+        )
+        return result
     except OutputParserException as e:
-        return {"output": f"The agent failed to produce a valid response. Details: {e}", "intermediate_steps": []}
+        logger.error(f"Agent parse error: session_id={session_id}, error={e}")
+        return {
+            "output": f"The agent failed to produce a valid response. Details: {e}",
+            "intermediate_steps": [],
+        }
     except Exception as e:
-        return {"output": f"An unexpected error occurred: {e}", "intermediate_steps": []}
+        logger.exception(f"Agent runtime error: session_id={session_id}, error={e}")
+        return {
+            "output": f"An unexpected error occurred: {e}",
+            "intermediate_steps": [],
+        }
