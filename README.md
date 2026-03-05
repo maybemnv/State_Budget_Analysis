@@ -138,6 +138,43 @@ Maximum upload size is configurable via `MAX_UPLOAD_MB` (default: 100 MB).
 
 ## Running Tests
 
+Create a `.env` file with a valid API key (required for test imports):
+
+```env
+GEMINI_API_KEY=your_api_key_here
+```
+
+### Run All Tests
+
 ```bash
 uv run pytest
 ```
+
+### Run Specific Test Suites
+
+| Command | Description |
+| ------- | ----------- |
+| `uv run pytest tests/backend/test_api.py -v` | API endpoints (upload, sessions, health) |
+| `uv run pytest tests/backend/test_statistical.py -v` | Statistical analysis functions |
+| `uv run pytest tests/backend/test_ml.py -v` | ML tools (PCA, clustering, regression, classification) |
+| `uv run pytest tests/backend/test_time_series.py -v` | Time series (stationarity, forecasting, decomposition) |
+| `uv run pytest tests/backend/test_benchmarks.py -v` | 30 benchmark queries + output parser |
+
+### Run with Verbose Output
+
+```bash
+uv run pytest -v                    # Show all test names
+uv run pytest -v --tb=short         # Verbose with short traceback
+uv run pytest --cov=backend         # With coverage (requires pytest-cov)
+```
+
+### Test Coverage Summary
+
+| Suite | Tests | Description |
+| ----- | ----- | ----------- |
+| `test_api.py` | 6 | FastAPI endpoints, file upload, session management |
+| `test_statistical.py` | 11 | Descriptive stats, correlations, outliers, value counts |
+| `test_ml.py` | 8 | PCA, K-means, anomaly detection, regression, classification |
+| `test_time_series.py` | 10 | ADF/KPSS tests, ARIMA/Prophet forecasting, decomposition |
+| `test_benchmarks.py` | 35 | Query-to-tool mapping validation, output parser |
+| **Total** | **70** | All backend tests |
