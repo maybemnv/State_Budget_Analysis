@@ -18,13 +18,16 @@ jobs:
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install dependencies
+        working-directory: ./backend
         run: uv sync --frozen --dev
       - name: Lint with ruff
+        working-directory: ./backend
         run: |
           uv run ruff check .
       - name: Run tests
+        working-directory: ./backend
         run: |
-          uv run pytest backend/tests
+          uv run pytest tests
 
   frontend-test:
     runs-on: ubuntu-latest
@@ -38,7 +41,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         working-directory: ./frontend
-        run: npm ci
+        run: npm ci --legacy-peer-deps
       - name: Lint
         working-directory: ./frontend
         run: npm run lint
