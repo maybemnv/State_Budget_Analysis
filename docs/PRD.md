@@ -9,7 +9,9 @@
 
 ## Project Summary
 
-DataLens AI is a complete rebuild of the existing CSV Data Analyzer — moving from a Streamlit prototype to a production-grade, agentic data analysis platform. The new system combines a **Next.js 15 frontend** with shadcn/ui components and React Three Fiber 3D visualizations, a **FastAPI Python backend** preserving all existing analysis logic, and a **LangChain-powered Autonomous Data Analyst agent** that interprets natural language commands and orchestrates multi-step analytical workflows in real time.
+DataLens AI is a complete rebuild of the existing CSV Data Analyzer — moving from a Streamlit prototype to a production-grade, agentic data analysis platform. The new system combines a **Next.js 15 frontend** with a custom design language, React Three Fiber 3D visualizations with depth effects, a **FastAPI Python backend** preserving all existing analysis logic, and a **LangChain-powered Autonomous Data Analyst agent** that interprets natural language commands and orchestrates multi-step analytical workflows in real time.
+
+**This is not another dashboard.** This is a tool that feels alive — where the agent's reasoning is visceral, visualizations draw themselves, and every interaction has weight.
 
 ---
 
@@ -19,7 +21,7 @@ DataLens AI is a complete rebuild of the existing CSV Data Analyzer — moving f
 2. [Technology Stack](#2-technology-stack)
 3. [System Architecture](#3-system-architecture)
 4. [Agentic Workflow Design](#4-agentic-workflow-design)
-5. [UI Design & Layout](#5-ui-design--layout)
+5. [UI Design System](#5-ui-design-system)
 6. [Algorithm Expansion](#6-algorithm-expansion)
 7. [Migration Plan from v1](#7-migration-plan-from-v1)
 8. [Open Decisions & Future Scope](#8-open-decisions--future-scope)
@@ -40,6 +42,8 @@ The existing CSV Data Analyzer (v1) is a functional prototype built on Streamlit
 
 > **DataLens AI transforms passive data exploration into an active conversation.** Users describe what they want to understand, and an autonomous agent decides which analyses to run, executes them in sequence, interprets results, and presents a coherent story — all in real time.
 
+> **Design Philosophy:** This tool should feel like collaborating with a brilliant colleague, not filling out a Jira ticket. Every pixel, every animation, every sound should reinforce that the agent is *alive* and *thinking*.
+
 ### 1.3 Success Metrics
 
 | Metric | Target |
@@ -49,6 +53,7 @@ The existing CSV Data Analyzer (v1) is a functional prototype built on Streamlit
 | Supported file size | Up to 100MB CSV |
 | P95 agent response latency | < 8 seconds |
 | Visualization render time | < 2 seconds |
+| **"Holy Shit" moment** | User shares screenshot unprompted |
 
 ---
 
@@ -61,24 +66,15 @@ Every technology choice is justified by the specific requirements of an agentic 
 | Layer | Technology | Justification |
 |-------|-----------|---------------|
 | Frontend UI | Next.js 15 (App Router) | Server components, streaming SSR, native WebSocket support, and best-in-class DX for React apps |
-| Component Library | shadcn/ui + Tailwind CSS | Unstyled, fully composable components — no fighting with a design system, full control over the dark theme |
-| 3D Visualization | React Three Fiber + Drei | Declarative Three.js in React — enables PCA/UMAP 3D scatter, cluster orbs, and animated data landscapes |
+| Component Library | shadcn/ui + Tailwind CSS | Unstyled, fully composable components — we own the design language, not a theme |
+| 3D Visualization | React Three Fiber + Drei + PostGIS | Declarative Three.js with post-processing — depth-of-field, bloom glow, refractive materials |
 | 2D Charts | Recharts + Visx | Recharts for standard charts; Visx (D3-based) for custom correlation and heatmap renders |
 | Agent Framework | LangChain (Python) | Tool-calling agents, structured output, streaming callbacks, and a large ecosystem of integrations |
 | LLM | GPT-4o / Gemini 1.5 Pro | Both supported via LangChain abstraction; users bring their own API key. Local Ollama (DeepSeek-R1) as private option |
 | Backend API | FastAPI (Python) | Async, fast, WebSocket-native. All existing analysis logic (pandas, sklearn, statsmodels) migrates directly |
 | Real-time Comms | WebSockets | Streams agent reasoning steps and tool call results to the UI incrementally as they execute |
 | Data Processing | Pandas + Polars | Pandas for compatibility; Polars added for large file (50MB+) processing performance |
-
-### 2.2 LangChain vs CrewAI — Decision Record
-
-**Decision: LangChain ✅**
-
-DataLens needs **one smart agent with many tools**, not multiple collaborating agents with different roles. LangChain's ReAct tool-calling pattern is exactly this — a single reasoning loop that selects and chains tools. CrewAI (which is built on LangChain) adds multi-agent orchestration overhead that provides no benefit here.
-
-CrewAI becomes the right choice if you later want specialized agents — a Data Cleaning Agent, a Visualization Agent, and a Report Writing Agent working in parallel. That is a **v3 conversation**.
-
----
+| Typography | Geist Mono + Satoshi | Monospace body for data density, geometric sans for headings |
 
 ## 3. System Architecture
 
@@ -91,9 +87,10 @@ The system is divided into three bounded contexts that communicate via a defined
 │   FRONTEND LAYER    │ ◄──────────────────────── ► │      AGENT LAYER         │ ◄──────────────────────► │   ANALYSIS LAYER    │
 │                     │                             │                          │                          │                     │
 │  Next.js 15         │                             │  LangChain ReAct Agent   │                          │  FastAPI Endpoints  │
-│  shadcn/ui          │                             │  Tool Registry (12)      │                          │  Existing Analyzers │
+│  Custom Design      │                             │  Tool Registry (12)      │                          │  Existing Analyzers │
 │  React Three Fiber  │                             │  Streaming Callbacks     │                          │  New ML Algorithms  │
 │  WebSocket Client   │                             │  Dataset Context Mgr     │                          │                     │
+│  PostFX Pipeline    │                             │  Typewriter Animation    │                          │                     │
 └─────────────────────┘                             └──────────────────────────┘                          └─────────────────────┘
 ```
 
@@ -101,9 +98,9 @@ The system is divided into three bounded contexts that communicate via a defined
 1. Frontend uploads file via REST → receives `session_id`
 2. Opens WebSocket connection
 3. User sends natural language query
-4. Agent streams reasoning + tool calls over WebSocket
+4. Agent streams reasoning + tool calls over WebSocket (typewriter effect)
 5. Analysis Layer executes each tool
-6. Results stream back to UI in real time
+6. Results stream back to UI — charts draw themselves, 3D scenes animate
 
 ### 3.2 Backend Directory Structure
 
@@ -139,30 +136,35 @@ backend/
 ```
 frontend/
   app/
-    layout.tsx               # Root layout, theme provider
-    page.tsx                 # Landing / upload screen
+    layout.tsx               # Root layout, theme provider, font loading
+    page.tsx                 # Landing / upload screen with file "unfold" animation
     workspace/[sessionId]/
       page.tsx               # Main analysis workspace
   components/
     agent/
       AgentChat.tsx          # Chat input + streaming message thread
-      ThoughtStep.tsx        # Individual agent reasoning step
-      ToolCallCard.tsx       # Tool call with args + result summary
+      ThoughtStep.tsx        # Typewriter-animated reasoning step
+      ToolCallCard.tsx       # Tool call with args + result summary (builds itself)
+      AgentAvatar.tsx        # Abstract animated orb (glows when thinking)
     viz/
-      Chart2D.tsx            # Recharts wrapper
-      Scene3D.tsx            # React Three Fiber canvas
-      PCAScatter3D.tsx       # 3D PCA component
-      ClusterOrbs.tsx        # 3D cluster visualization
-      HeatmapGrid.tsx        # Correlation heatmap
+      Chart2D.tsx            # Recharts wrapper with draw-in animation
+      Scene3D.tsx            # React Three Fiber canvas + PostFX
+      PCAScatter3D.tsx       # 3D PCA with depth-of-field + glow
+      ClusterOrbs.tsx        # Refractive cluster spheres + particle trails
+      UMAPEmbedding.tsx      # Animated topology morph
+      ForceGraph.tsx         # Correlation as force-directed graph
     data/
-      DataTable.tsx          # Virtualized table (TanStack)
+      DataTable.tsx          # Virtualized table (TanStack) with mono font
       ColumnSummary.tsx      # Per-column stats card
     layout/
       Sidebar.tsx            # File info + session controls
-      CanvasPanel.tsx        # Persistent viz canvas
+      CanvasPanel.tsx        # Persistent viz canvas with expand-on-result
+      CommandPalette.tsx     # Cmd+K context-aware suggestions
   lib/
-    websocket.ts             # WebSocket hook
+    websocket.ts             # WebSocket hook with message queue
     types.ts                 # Shared TypeScript types
+    animations.ts            # Shared animation curves & timings
+    theme.ts                 # Color tokens, typography scale
 ```
 
 ---
@@ -173,14 +175,13 @@ frontend/
 
 The Autonomous Data Analyst uses a **LangChain ReAct (Reasoning + Acting)** agent with a streaming callback handler. The agent receives a natural language query and a structured dataset context, then iteratively reasons about which tools to call, executes them, observes results, and continues until it can generate a complete answer.
 
-**The ReAct Loop:**
+**The ReAct Loop (with UI feedback):**
 ```
-Thought:     What does the user actually need?
-Action:      Which tool answers this?
-Observation: What did the tool return?
-Thought:     Is this enough, or do I need more?
-[repeat]
-Final Answer: Structured response with all findings and chart specs
+Thought:     What does the user actually need?     → Typewriter animation, avatar pulses
+Action:      Which tool answers this?              → Tool card builds itself
+Observation: What did the tool return?             → Result snaps in with sound
+Thought:     Is this enough, or do I need more?    → Avatar shifts color
+Final Answer: Structured response with all findings and chart specs → Chart draws itself
 ```
 
 ### 4.2 Agent Tool Registry
@@ -252,18 +253,91 @@ The agent streams its reasoning process to the UI via WebSocket in real time. Ea
 { type: 'error',       message: 'Column not found: ...' }
 ```
 
+### 4.5 Auto-Insight Mode (The "Holy Shit" Feature)
+
+A toggle where the agent doesn't wait for queries. It:
+1. Scans the dataset in parallel
+2. Runs a battery of analyses (anomaly detection, correlation, clustering, trend analysis)
+3. Surfaces 3-5 non-obvious findings with visualizations
+4. Presents them as a **story**, not a list
+
+**Example output:**
+> *"I found something interesting. Revenue peaks every Q4 (expected), but the **variance is increasing** — 2024 had 3x the volatility of 2022. Also, **Category C is dragging down margins** — it's 40% of revenue but 60% of costs. Want me to dig deeper?"*
+
 ---
 
-## 5. UI Design & Layout
+## 5. UI Design System
 
 ### 5.1 Design Philosophy
 
-- **Dark-first** design with a slate/indigo palette — data tools look credible when they look serious
-- **Three-panel layout** that never collapses context — users see their data, chat with the agent, and review visualizations simultaneously
-- **3D only where it adds value** — PCA, UMAP, cluster embeddings. Never 3D bar charts.
-- **Agent reasoning is visible** — users see every thought step and tool call, building trust and understanding
+**Not another corporate dashboard.** This tool has a soul.
 
-### 5.2 Main Workspace Layout
+| Principle | What It Means |
+|-----------|---------------|
+| **Warm, not cold** | Near-black backgrounds with warm undertones, not sterile slate gray |
+| **Alive, not static** | Agent avatar pulses, thoughts type out, charts draw themselves |
+| **Dense, not cramped** | Monospace body text for data, but generous whitespace around key moments |
+| **Surprising, not predictable** | Viz canvas expands on big findings, timeline scrubber for agent reasoning |
+| **3D with purpose** | Depth-of-field, refraction, particle trails — never 3D bar charts |
+
+### 5.2 Color Tokens
+
+```css
+/* Backgrounds — warm near-black, not cold slate */
+--background:       #0A0A0F;    /* Warm black */
+--surface:          #14141A;    /* Elevated panels */
+--surface-elevated: #1E1E28;    /* Cards, modals */
+
+/* Primary accents — burnt orange (energy, not corporate) */
+--primary:          #FF6B35;    /* Burnt orange */
+--primary-soft:     #FFE5D9;    /* Soft orange glow */
+
+/* Secondary — teal for positive metrics */
+--success:          #00DCB4;    /* Teal */
+--success-soft:     #D1FDF5;
+
+/* Agent thoughts — deep purple */
+--agent:            #9D4EDD;    /* Deep purple */
+--agent-soft:       #E9D5FF;
+
+/* Alerts */
+--warning:          #F59E0B;    /* Amber */
+--error:            #EF4444;    /* Red */
+
+/* Text — warm off-white, not harsh #FFF */
+--text-primary:     #E8E6E3;    /* Warm white */
+--text-secondary:   #C8C4BC;    /* Warm light gray */
+--text-muted:       #8B8878;    /* Warm gray */
+
+/* Borders */
+--border:           #2A2A35;    /* Warm dark border */
+--border-hover:     #3D3D4D;
+```
+
+### 5.3 Typography
+
+```css
+/* Headings — geometric, confident */
+--font-heading: 'Satoshi', 'Inter', sans-serif;
+
+/* Body — monospace for data density, terminal aesthetic */
+--font-body: 'Geist Mono', 'JetBrains Mono', monospace;
+
+/* Code / specs */
+--font-mono: 'JetBrains Mono', monospace;
+
+/* Scale */
+--text-xs:   0.75rem;   /* 12px — labels, badges */
+--text-sm:   0.875rem;  /* 14px — body, stats */
+--text-base: 1rem;      /* 16px — default */
+--text-lg:   1.125rem;  /* 18px — emphasis */
+--text-xl:   1.25rem;   /* 20px — section titles */
+--text-2xl:  1.5rem;    /* 24px — page titles */
+```
+
+**Why monospace for body?** Analysts read numbers all day. Monospace makes tables align, stats scan better, and gives the whole thing a **terminal aesthetic** that fits the "agent" concept.
+
+### 5.4 Main Workspace Layout
 
 ```
 ┌──────────────────┬─────────────────────────────────────┬────────────────────────┐
@@ -272,43 +346,60 @@ The agent streams its reasoning process to the UI via WebSocket in real time. Ea
 │                  │                                      │                         │
 │  File info card  │  Message thread (scrollable)         │  Chart gallery (pinned) │
 │  Column browser  │  ├─ User message bubbles             │  3D scene (RTF canvas)  │
-│  Data type badges│  ├─ Agent thought steps              │  Fullscreen toggle      │
-│  Quick stats     │  ├─ Tool call cards (expandable)     │  Export PNG / SVG       │
-│  Session history │  ├─ Inline chart renders             │  Chart history tabs     │
-│  LLM selector    │  └─ Final answer text                │                         │
+│  Data badges     │  ├─ Agent thought steps (typewriter) │  Depth-of-field + glow  │
+│  Quick stats     │  ├─ Tool call cards (builds itself)  │  Fullscreen toggle      │
+│  Session history │  ├─ Inline chart renders (draws in)  │  Export PNG / SVG       │
+│                  │  └─ Final answer text                │  Chart history tabs     │
 │                  │                                      │                         │
 │                  │  ─────────────────────────────────── │                         │
 │                  │  [ Command input bar — sticky bottom ]│                         │
-│                  │  [ Suggested query chips             ]│                         │
+│                  │  [ Cmd+K for context suggestions     ]│                         │
 └──────────────────┴─────────────────────────────────────┴────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────────┐
+│  AGENT TIMELINE (bottom scrubber — shows full reasoning chain)                 │
+│  ●────○────●────────○────●                                                       │
+│  desc  stats  anomaly  chart  answer                                            │
+└────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 5.3 When to Use 3D vs 2D
+### 5.5 When to Use 3D vs 2D
 
-| Visualization Type | Render | Reason |
-|-------------------|--------|--------|
-| PCA with 3 components | **3D (RTF)** | Depth represents the third principal component — genuinely more information |
-| UMAP embeddings | **3D (RTF)** | Topology becomes clearer with an extra dimension; animated rotation reveals structure |
-| K-means cluster orbs | **3D (RTF)** | Cluster separation, size, and density all readable at a glance |
-| Correlation heatmap | 2D (Visx) | Matrix data; 3D adds zero value and makes it harder to read |
-| Time series forecast | 2D (Recharts) | Time is a 1D axis; 3D would be misleading |
-| Distribution / histogram | 2D (Recharts) | Shape of distribution is clearest in 2D |
-| Scatter with two variables | 2D (Recharts) | Two variables = 2D; adding Z without a third variable is chart junk |
-| SHAP feature importance | 2D horizontal bar | Ranking is a 1D concept; bar chart is canonical |
+| Visualization Type | Render | Enhancement |
+|-------------------|--------|-------------|
+| PCA with 3 components | **3D (RTF)** | Depth-of-field blur on distant points, glow on hover, trajectory lines |
+| UMAP embeddings | **3D (RTF)** | Animated morph between neighbor values, particle trails |
+| K-means cluster orbs | **3D (RTF)** | Semi-transparent refractive spheres, density visible through layers |
+| Correlation | **Force Graph (Visx)** | Nodes = columns, edges = correlation strength, click to isolate |
+| Time series forecast | 2D (Recharts) | Line draws itself left-to-right, confidence band fades in |
+| Distribution / histogram | 2D (Recharts) | Bars grow from zero with stagger |
+| SHAP feature importance | 2D horizontal bar | Bars slide in sorted by importance |
 
-### 5.4 Component Colour Tokens
+### 5.6 Micro-Interactions
 
-```css
---background:     #0F172A   /* slate-900 */
---surface:        #1E293B   /* slate-800 */
---border:         #334155   /* slate-700 */
---accent:         #6366F1   /* indigo-500 */
---accent-soft:    #EEF2FF   /* indigo-50 */
---violet:         #8B5CF6   /* violet-500 */
---green:          #10B981   /* emerald-500 */
---amber:          #F59E0B   /* amber-500 */
---text-primary:   #F1F5F9   /* slate-100 */
---text-muted:     #94A3B8   /* slate-400 */
+| Moment | Animation | Sound (optional) |
+|--------|-----------|------------------|
+| File upload | File "unfolds" — rows animate in as parsed | Soft paper rustle |
+| Agent thinking | Avatar orb pulses + shifts color | None (or subtle hum) |
+| Thought appears | Typewriter effect at ~60 WPM | Mechanical keyboard click |
+| Tool completes | Card "snaps" in with scale animation | Soft pop |
+| Chart renders | Lines trace, bars grow, points fade with stagger | None |
+| Error state | Panel shakes, recovery suggestions appear | Low thud |
+| Big insight found | Viz canvas expands to fill center | Rising chime |
+
+### 5.7 Agent Avatar
+
+Not a robot icon. An **abstract animated orb** that:
+- **Glows** when the agent is thinking
+- **Shifts color** based on current mode (purple = reasoning, orange = executing, teal = done)
+- **Pulses** in time with token generation
+- **Particles** emit on tool completion
+
+```
+    Thinking:     ◉ (purple, soft glow, slow pulse)
+    Executing:    ◉ (orange, brighter, faster pulse)
+    Done:         ◉ (teal, steady, no pulse)
+    Error:        ◉ (red, flickering)
 ```
 
 ---
@@ -338,38 +429,45 @@ All existing algorithms from the Streamlit app migrate directly to the FastAPI b
 ## 7. Migration Plan from v1
 
 ### Phase 1 — Backend Foundation *(Week 1–2)*
-- Set up FastAPI project structure with `uv` dependency management
-- Migrate all existing analyzer modules from `src/` into `backend/analyzers/`
-- Wrap each analyzer function as a LangChain tool with Pydantic schemas
-- Implement WebSocket endpoint with streaming callback handler
-- Write integration tests for all migrated tools
+- [x] Set up FastAPI project structure with `uv` dependency management
+- [x] Migrate all existing analyzer modules from `src/` into `backend/analyzers/`
+- [x] Wrap each analyzer function as a LangChain tool with Pydantic schemas
+- [x] Implement WebSocket endpoint with streaming callback handler
+- [x] Write integration tests for all migrated tools
 
 ### Phase 2 — Agent Core *(Week 2–3)*
-- Implement ReAct agent with the 12-tool registry
-- Build dataset context manager (schema, sample, column metadata per session)
-- Test agent traces against benchmark query set (30 representative queries)
-- Implement error handling and graceful fallbacks when tools fail
+- [x] Implement ReAct agent with the 12-tool registry
+- [x] Build dataset context manager (schema, sample, column metadata per session)
+- [x] Test agent traces against benchmark query set (30 representative queries)
+- [x] Implement error handling and graceful fallbacks when tools fail
 
 ### Phase 3 — Frontend Shell *(Week 3–4)*
-- Next.js 15 project setup with shadcn/ui, Tailwind dark mode config
-- Three-panel layout implementation
-- WebSocket hook and message type system
-- File upload with drag-and-drop, validation, progress indicator
-- Agent chat thread with thought step + tool call card components
+- [ ] Next.js 15 project setup with custom theme (burnt orange + teal + warm black)
+- [ ] Three-panel layout implementation
+- [ ] WebSocket hook and message type system
+- [ ] File upload with "unfold" animation
+- [ ] Agent chat with typewriter-animated thought steps
+- [ ] Tool call cards that build themselves
+- [ ] Agent avatar component (animated orb)
+- [ ] Command palette (`Cmd+K`) for context-aware suggestions
 
 ### Phase 4 — Visualizations *(Week 4–5)*
-- 2D chart components: histogram, scatter, line, heatmap, bar (Recharts + Visx)
-- React Three Fiber canvas setup with camera controls (Drei `OrbitControls`)
-- PCA 3D scatter component
-- UMAP 3D embedding component with animated entry
-- K-means cluster orbs with color-coded segments
+- [ ] 2D chart components with draw-in animations
+- [ ] React Three Fiber canvas with PostFX (depth-of-field, bloom)
+- [ ] PCA 3D scatter with glow + depth blur
+- [ ] UMAP 3D embedding with animated morph
+- [ ] K-means cluster orbs (refractive spheres)
+- [ ] Force-directed correlation graph
+- [ ] Viz canvas expand-on-result animation
 
 ### Phase 5 — Polish & Deploy *(Week 5–6)*
-- Suggested query chips based on detected data type
-- Export functionality (PNG charts, PDF report, CSV results)
-- Docker Compose setup: frontend + backend + nginx
-- Performance testing on large files (50MB+)
-- README + demo GIF
+- [ ] Agent timeline scrubber at bottom
+- [ ] Auto-Insight Mode (parallel analysis battery)
+- [ ] Export functionality (PNG charts, PDF report, CSV results)
+- [ ] Sound design (optional, muted by default)
+- [ ] Docker Compose setup: frontend + backend + nginx
+- [ ] Performance testing on large files (50MB+)
+- [ ] README + demo GIF
 
 ---
 
@@ -384,6 +482,7 @@ All existing algorithms from the Streamlit app migrate directly to the FastAPI b
 | Local LLM support | Ollama + DeepSeek-R1 via LangChain's Ollama integration. Good for privacy-sensitive data. Add in Phase 5. |
 | Authentication | None for v2 (local tool), or simple API key per session. Don't over-engineer. |
 | Chart persistence | Store chart specs (JSON) not rendered images — regenerate on load for consistency. |
+| Sound design | Optional, muted by default. Use Howler.js for audio. |
 
 ### 8.2 v3 Scope — Out of Bounds for Now
 
@@ -394,6 +493,20 @@ These are real ideas worth building, but explicitly deferred to avoid scope cree
 - **Database connectors** — PostgreSQL, BigQuery, Snowflake instead of file upload only
 - **Collaborative sessions** — multiple users analyzing the same dataset simultaneously
 - **Scheduled analysis reports** — automated runs with email/Slack delivery
+
+---
+
+## Appendix A: Design References
+
+Don't look at other data tools. Look at:
+
+| Product | What to Steal |
+|---------|---------------|
+| [Linear](https://linear.app) | Micro-interactions, animation curves |
+| [Raycast](https://raycast.com) | Command palette, keyboard-first navigation |
+| [Obsidian](https://obsidian.md) | Warm dark theme, dense information legibility |
+| [The Pudding](https://pudding.cool) | Data storytelling that doesn't suck |
+| [Bloomberg Terminal](https://www.bloomberg.com/professional/) | Information density, monospace data readability |
 
 ---
 
