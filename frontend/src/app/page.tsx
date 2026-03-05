@@ -39,6 +39,8 @@ export default function HomePage() {
       // Upload to backend
       const response = await api.upload(file)
       
+      console.log('Upload successful, session ID:', response.session_id)
+      
       clearInterval(progressInterval)
       setProgress(100)
       setUploadState("parsing" as UploadStateType)
@@ -50,6 +52,7 @@ export default function HomePage() {
       
       // Redirect to workspace with real session ID
       await new Promise(resolve => setTimeout(resolve, 1000))
+      console.log('Redirecting to workspace:', `/workspace/${response.session_id}`)
       router.push(`/workspace/${response.session_id}`)
     } catch (err) {
       console.error('Upload error:', err)
