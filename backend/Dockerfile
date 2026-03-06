@@ -9,9 +9,9 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 # Install system dependencies (needed for prophet, pandas, etc.)
-RUN apt-get update && apt-get install -y --no-install-recommends 
-    build-essential 
-    curl 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for faster package management
