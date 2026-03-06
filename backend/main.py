@@ -11,6 +11,7 @@ from .db import init_db, get_minio, close_redis
 from .routes.upload import router as upload_router
 from .routes.chat import router as chat_router
 from .session import list_sessions
+from .tasks.cleanup import cleanup_expired_sessions
 
 
 @asynccontextmanager
@@ -31,6 +32,13 @@ async def lifespan(app: FastAPI):
     minio = get_minio()
     await minio.ensure_bucket()
     logger.info("MinIO bucket ready")
+
+    try:
+        deleted = await cleanup_expired_sessions()
+        if deleted > 0:
+            logger.info(f"Cleaned up {deleted} expired sessions on startup")
+    except Exception as e:
+        logger.warning(f"Startup cleanup failed (non-fatal): {e}")
 
     yield
 
@@ -89,13 +97,12 @@ async def health() -> dict:
 async def get_all_sessions() -> dict:
     """List all active sessions (for debugging)."""
     from .db import get_db
-    async for db in get_db():
+    async with get_db() as db:
         session_ids = await list_sessions(db)
         return {
             "count": len(session_ids),
             "sessions": session_ids,
         }
-    return {"count": 0, "sessions": []}
 
 
 @app.get("/")

@@ -1,0 +1,95 @@
+from datetime import datetime, timedelta
+from sqlalchemy import select, delete
+
+from ..db import get_db
+from ..db.models import Session as SessionModel, Message, ToolRun, Chart
+from ..db.minio_client import get_minio
+from ..logging import get_logger
+
+logger = get_logger(__name__)
+
+
+async def cleanup_expired_sessions() -> int:
+    """Delete sessions older than the configured TTL.
+    
+    Returns the number of sessions deleted.
+    """
+    deleted_count = 0
+    
+    async for db in get_db():
+        result = await db.execute(
+            select(SessionModel).where(SessionModel.expires_at < datetime.utcnow())
+        )
+        expired = result.scalars().all()
+        
+        if not expired:
+            logger.info("No expired sessions to clean up")
+            return 0
+        
+        logger.info(f"Found {len(expired)} expired sessions to clean up")
+        
+        minio_client = get_minio()
+        
+        for session in expired:
+            try:
+                await minio_client.delete_parquet(session.session_id)
+                logger.debug(f"Deleted parquet: {session.session_id}")
+            except Exception as e:
+                logger.error(f"Failed to delete parquet for {session.session_id}: {e}")
+        
+        session_ids = [s.session_id for s in expired]
+        
+        await db.execute(
+            delete(Message).where(Message.session_id.in_(session_ids))
+        )
+        await db.execute(
+            delete(ToolRun).where(ToolRun.session_id.in_(session_ids))
+        )
+        await db.execute(
+            delete(Chart).where(Chart.session_id.in_(session_ids))
+        )
+        
+        await db.execute(
+            delete(SessionModel).where(SessionModel.expires_at < datetime.utcnow())
+        )
+        
+        await db.commit()
+        deleted_count = len(expired)
+        
+        logger.info(f"Cleaned up {deleted_count} expired sessions")
+        return deleted_count
+    
+    return deleted_count
+
+
+async def cleanup_old_messages(days: int = 30) -> int:
+    """Delete messages older than specified days (for all non-expired sessions).
+    
+    Returns the number of messages deleted.
+    """
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    deleted_count = 0
+    
+    async for db in get_db():
+        result = await db.execute(
+            select(Message).where(Message.created_at < cutoff)
+        )
+        old_messages = result.scalars().all()
+        
+        if not old_messages:
+            logger.info("No old messages to clean up")
+            return 0
+        
+        logger.info(f"Found {len(old_messages)} messages older than {days} days")
+        
+        await db.execute(
+            delete(Message).where(Message.created_at < cutoff)
+        )
+        
+        await db.commit()
+        deleted_count = len(old_messages)
+        
+        logger.info(f"Cleaned up {deleted_count} old messages")
+        return deleted_count
+    
+    return deleted_count
