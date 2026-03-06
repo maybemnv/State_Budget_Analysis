@@ -31,6 +31,16 @@ dependencies = [
     "langchain>=0.3,<1.0",
     "langchain-core>=0.3,<1.0",
     "langchain-google-genai>=2.0",
+    # Database - PostgreSQL
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30",
+    "alembic>=1.15",
+    # Database - Redis
+    "redis>=5.0",
+    # Object Storage - MinIO
+    "minio>=7.2",
+    # Caching
+    "cachetools>=5.5",
     # Streamlit (legacy — v1 only)
     "streamlit>=1.52.1",
     "google-generativeai>=0.8.5",

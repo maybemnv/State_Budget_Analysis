@@ -3,8 +3,10 @@ from pathlib import Path
 import io
 
 import pandas as pd
-from fastapi import APIRouter, File, UploadFile, HTTPException
+from fastapi import APIRouter, File, UploadFile, HTTPException, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..db import get_db
 from ..session import create_session, get_session, delete_session
 from ..schemas import UploadResponse, SessionInfo
 from ..config import settings
@@ -41,7 +43,10 @@ def _clean(df: pd.DataFrame) -> pd.DataFrame:
 
 
 @router.post("/upload", response_model=UploadResponse)
-async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
+async def upload_file(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+) -> UploadResponse:
     filename = file.filename or "unknown"
     suffix = Path(filename).suffix.lower()
     logger.info(f"Upload request: filename={filename}, size={file.size or 'unknown'}")
@@ -65,7 +70,8 @@ async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
         raise HTTPException(status_code=422, detail=f"Failed to parse file: {e}")
 
     df = _clean(df)
-    session_id = create_session(df, filename)
+
+    session_id = await create_session(df, filename, db)
 
     logger.info(f"Upload success: session_id={session_id}, rows={df.shape[0]}, cols={df.shape[1]}")
 
@@ -79,29 +85,35 @@ async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
 
 
 @router.get("/sessions/{session_id}", response_model=SessionInfo)
-def get_session_info(session_id: str) -> dict:
-    session = get_session(session_id)
+async def get_session_info(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    session = await get_session(session_id, db)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    meta = session["metadata"]
+    schema = session["schema"]
     return {
         "session_id": session_id,
-        "filename": meta["filename"],
-        "shape": list(meta["shape"]),
-        "columns": meta["columns"],
-        "dtypes": meta["dtypes"],
-        "numeric_columns": meta.get("numeric_columns", []),
-        "categorical_columns": meta.get("categorical_columns", []),
-        "missing_values": meta.get("missing_values", 0),
+        "filename": schema["filename"],
+        "shape": schema["shape"],
+        "columns": schema["columns"],
+        "dtypes": schema["dtypes"],
+        "numeric_columns": schema.get("numeric_columns", []),
+        "categorical_columns": schema.get("categorical_columns", []),
+        "missing_values": schema.get("missing_values", 0),
     }
 
 
 @router.delete("/sessions/{session_id}")
-def delete_session_endpoint(session_id: str) -> dict:
-    session = get_session(session_id)
+async def delete_session_endpoint(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    session = await get_session(session_id, db)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    delete_session(session_id)
+    await delete_session(session_id, db)
     return {"status": "deleted", "session_id": session_id}

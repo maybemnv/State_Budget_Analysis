@@ -1,9 +1,15 @@
 import json
 import logging
+import time
+from typing import Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..session import get_session
+from ..db import get_db, get_redis
+from ..db.models import Message, ToolRun, Chart
+from ..session import get_session as get_session_data, refresh_session_ttl
 from ..agent.analyst_agent import run_agent
 from ..agent.output_parser import parse_output
 from ..streaming import WebSocketStreamingCallback
@@ -14,57 +20,235 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["chat"])
 
+LLM_CONTEXT_MESSAGES = 10
+
+
+async def save_message(
+    session_id: str,
+    role: str,
+    content: str,
+    tool_name: Optional[str] = None,
+    tool_input: Optional[dict] = None,
+    tool_result: Optional[dict] = None,
+    db: AsyncSession = None,
+) -> None:
+    if db is None:
+        return
+
+    message = Message(
+        session_id=session_id,
+        role=role,
+        content=content,
+        tool_name=tool_name,
+        tool_input=tool_input,
+        tool_result=tool_result,
+    )
+    db.add(message)
+    await db.commit()
+
+
+async def save_tool_run(
+    session_id: str,
+    tool_name: str,
+    tool_input: dict,
+    tool_result: dict,
+    duration_ms: int,
+    db: AsyncSession = None,
+) -> None:
+    if db is None:
+        return
+
+    tool_run = ToolRun(
+        session_id=session_id,
+        tool_name=tool_name,
+        input_json=tool_input,
+        result_json=tool_result,
+        duration_ms=duration_ms,
+    )
+    db.add(tool_run)
+    await db.commit()
+
+
+async def save_chart(
+    session_id: str,
+    chart_type: str,
+    vega_spec: dict,
+    query: str,
+    db: AsyncSession = None,
+) -> None:
+    if db is None:
+        return
+
+    chart = Chart(
+        session_id=session_id,
+        chart_type=chart_type,
+        vega_spec=vega_spec,
+        query=query,
+    )
+    db.add(chart)
+    await db.commit()
+
+
+async def get_conversation_summary(session_id: str, db: AsyncSession) -> str:
+    result = await db.execute(
+        select(Message)
+        .where(Message.session_id == session_id)
+        .order_by(Message.created_at.desc())
+        .limit(LLM_CONTEXT_MESSAGES)
+    )
+    messages = result.scalars().all()
+
+    if not messages:
+        return "No previous conversation."
+
+    summary_parts = []
+    for msg in reversed(messages):
+        if msg.role == "user":
+            summary_parts.append(f"User: {msg.content[:200]}")
+        elif msg.role == "assistant" and msg.content:
+            summary_parts.append(f"Assistant: {msg.content[:200]}")
+
+    return "\n".join(summary_parts)
+
 
 @router.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
     await websocket.accept()
 
-    session = get_session(session_id)
-    if session is None:
-        logger.warning(f"WebSocket rejected: session not found: {session_id}")
-        await websocket.send_text(json.dumps({"type": "error", "message": "Session not found"}))
-        await websocket.close(code=4004, reason="Session not found")
-        return
+    async for db in get_db():
+        session = await get_session_data(session_id, db)
+        if session is None:
+            logger.warning(f"WebSocket rejected: session not found: {session_id}")
+            await websocket.send_text(json.dumps({"type": "error", "message": "Session not found"}))
+            await websocket.close(code=4004, reason="Session not found")
+            return
 
-    logger.info(f"WebSocket accepted: session_id={session_id}")
-    callback = WebSocketStreamingCallback(websocket)
+        await refresh_session_ttl(session_id, db)
 
-    try:
-        while True:
-            raw = await websocket.receive_text()
-            try:
-                data = json.loads(raw)
-                message = data.get("message", "")
-            except json.JSONDecodeError:
-                message = raw
+        logger.info(f"WebSocket accepted: session_id={session_id}")
 
-            logger.debug(f"WS message: {message[:100]}...")
-            result = await run_agent(session_id, message)
-            parsed = parse_output(result.get("output", ""))
+        redis = await get_redis()
+        await redis.register_ws(session_id, "websocket")
 
-            if parsed["chart_spec"]:
-                await callback._send({"type": "chart", "spec": parsed["chart_spec"]})
+        callback = WebSocketStreamingCallback(websocket)
 
-            await callback._send({"type": "done"})
-
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected: session_id={session_id}")
-    except Exception as e:
-        logger.exception(f"WebSocket error: session_id={session_id}, error={e}")
         try:
-            await callback._send({"type": "error", "message": f"Server error: {str(e)}"})
-        except Exception:
-            pass
+            summary = await get_conversation_summary(session_id, db)
+
+            while True:
+                raw = await websocket.receive_text()
+                try:
+                    data = json.loads(raw)
+                    message = data.get("message", "")
+                except json.JSONDecodeError:
+                    message = raw
+
+                logger.debug(f"WS message: {message[:100]}...")
+
+                await save_message(session_id, "user", message, db=db)
+
+                start_time = time.time()
+                result = await run_agent(session_id, message, context=summary)
+                duration_ms = int((time.time() - start_time) * 1000)
+
+                parsed = parse_output(result.get("output", ""))
+
+                await save_message(
+                    session_id,
+                    "assistant",
+                    parsed.get("answer", ""),
+                    db=db,
+                )
+
+                for action, observation in result.get("intermediate_steps", []):
+                    tool_input = action.tool_input if isinstance(action.tool_input, dict) else {"input": str(action.tool_input)}
+                    tool_result = observation if isinstance(observation, dict) else {"output": str(observation)}
+
+                    await save_tool_run(
+                        session_id,
+                        action.tool,
+                        tool_input,
+                        tool_result,
+                        duration_ms,
+                        db=db,
+                    )
+
+                if parsed.get("chart_spec"):
+                    await callback._send({"type": "chart", "spec": parsed["chart_spec"]})
+
+                    await save_chart(
+                        session_id,
+                        "auto",
+                        parsed["chart_spec"],
+                        message,
+                        db=db,
+                    )
+
+                await callback._send({"type": "done"})
+
+        except WebSocketDisconnect:
+            logger.info(f"WebSocket disconnected: session_id={session_id}")
+            await redis.unregister_ws(session_id)
+        except Exception as e:
+            logger.exception(f"WebSocket error: session_id={session_id}, error={e}")
+            try:
+                await callback._send({"type": "error", "message": f"Server error: {str(e)}"})
+            except Exception:
+                pass
+        finally:
+            break
 
 
 @router.post("/chat/{session_id}", response_model=ChatResponse)
-async def chat(session_id: str, body: ChatRequest) -> ChatResponse:
-    session = get_session(session_id)
+async def chat(
+    session_id: str,
+    body: ChatRequest,
+    db: AsyncSession = Depends(get_db),
+) -> ChatResponse:
+    session = await get_session_data(session_id, db)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    result = await run_agent(session_id, body.message)
+    await refresh_session_ttl(session_id, db)
+
+    summary = await get_conversation_summary(session_id, db)
+
+    await save_message(session_id, "user", body.message, db=db)
+
+    start_time = time.time()
+    result = await run_agent(session_id, body.message, context=summary)
+    duration_ms = int((time.time() - start_time) * 1000)
+
     parsed = parse_output(result.get("output", ""))
+
+    await save_message(
+        session_id,
+        "assistant",
+        parsed.get("answer", ""),
+        db=db,
+    )
+
+    for action, observation in result.get("intermediate_steps", []):
+        tool_input = action.tool_input if isinstance(action.tool_input, dict) else {"input": str(action.tool_input)}
+        tool_result = observation if isinstance(observation, dict) else {"output": str(observation)}
+
+        await save_tool_run(
+            session_id,
+            action.tool,
+            tool_input,
+            tool_result,
+            duration_ms,
+            db=db,
+        )
+
+    if parsed.get("chart_spec"):
+        await save_chart(
+            session_id,
+            "auto",
+            parsed["chart_spec"],
+            body.message,
+            db=db,
+        )
 
     steps = [
         {
@@ -81,3 +265,39 @@ async def chat(session_id: str, body: ChatRequest) -> ChatResponse:
         has_error=parsed["has_error"],
         steps=steps,
     )
+
+
+@router.get("/chat/{session_id}/messages")
+async def get_messages(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    result = await db.execute(
+        select(Message)
+        .where(Message.session_id == session_id)
+        .order_by(Message.created_at)
+    )
+    messages = result.scalars().all()
+
+    return {
+        "count": len(messages),
+        "messages": [msg.to_dict() for msg in messages],
+    }
+
+
+@router.get("/chat/{session_id}/charts")
+async def get_charts(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    result = await db.execute(
+        select(Chart)
+        .where(Chart.session_id == session_id)
+        .order_by(Chart.created_at)
+    )
+    charts = result.scalars().all()
+
+    return {
+        "count": len(charts),
+        "charts": [chart.to_dict() for chart in charts],
+    }

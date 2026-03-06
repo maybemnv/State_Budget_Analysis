@@ -1,113 +1,223 @@
 import json
 import uuid
 import io
-import base64
-from pathlib import Path
+from datetime import datetime, timedelta
 from typing import Optional
+
 import pandas as pd
+from cachetools import LRUCache
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-SESSIONS_FILE = Path(__file__).parent / ".sessions.json"
-_sessions: dict[str, dict] = {}
+from .config import settings
+from .db import get_db as get_db_session, get_cache, get_minio, get_redis
+from .db.models import Session as SessionModel
+from .logging import get_logger
 
+logger = get_logger(__name__)
 
-def _load_sessions():
-    """Load sessions from disk if file exists."""
-    global _sessions
-    if SESSIONS_FILE.exists():
-        try:
-            with open(SESSIONS_FILE, 'r') as f:
-                data = json.load(f)
-                for session_id, session_data in data.items():
-                    if 'df_base64' in session_data:
-                        df_bytes = base64.b64decode(session_data['df_base64'])
-                        session_data['df'] = pd.read_pickle(io.BytesIO(df_bytes))
-                        del session_data['df_base64']
-                _sessions = data
-                print(f"Loaded {len(_sessions)} sessions from disk")
-        except Exception as e:
-            print(f"Failed to load sessions: {e}")
-            _sessions = {}
-    else:
-        _sessions = {}
-
-def _save_sessions():
-    try:
-        data = {}
-        for session_id, session_data in _sessions.items():
-            session_copy = session_data.copy()
-            if 'df' in session_data:
-                buf = io.BytesIO()
-                session_data['df'].to_pickle(buf)
-                session_copy['df_base64'] = base64.b64encode(buf.getvalue()).decode('utf-8')
-                del session_copy['df']
-            data[session_id] = session_copy
-        
-        with open(SESSIONS_FILE, 'w') as f:
-            json.dump(data, f)
-    except Exception as e:
-        print(f"Failed to save sessions: {e}")
-
-_load_sessions()
+_memory_cache: LRUCache[str, pd.DataFrame] = LRUCache(maxsize=10)
 
 
 def _resolve_id(raw: Optional[str]) -> str:
-    """Unwrap a session_id that LangChain may deliver as a JSON-wrapped string."""
     if not raw:
         return ""
     s = raw.strip()
     if s.startswith("{"):
         try:
+            import json
             return str(json.loads(s).get("session_id", s))
         except (json.JSONDecodeError, AttributeError):
             pass
     return s
 
 
-def create_session(df: pd.DataFrame, filename: str) -> str:
-    session_id = str(uuid.uuid4())
-    _sessions[session_id] = {
-        "df": df,
-        "filename": filename,
-        "metadata": _build_metadata(df, filename),
-        "created_at": pd.Timestamp.now().isoformat(),
-    }
-    _save_sessions()  # Persist to disk
-    return session_id
-
-
-def get_session(session_id: str) -> Optional[dict]:
-    return _sessions.get(_resolve_id(session_id))
-
-
-def get_df(session_id: str) -> Optional[pd.DataFrame]:
-    session = _sessions.get(_resolve_id(session_id))
-    return session["df"] if session else None
-
-
-def delete_session(session_id: str) -> bool:
-    """Delete a session and free memory."""
-    resolved_id = _resolve_id(session_id)
-    if resolved_id in _sessions:
-        del _sessions[resolved_id]
-        _save_sessions()  # Persist to disk
-        return True
-    return False
-
-
-def list_sessions() -> list[str]:
-    """List all active session IDs."""
-    return list(_sessions.keys())
-
-
-def _build_metadata(df: pd.DataFrame, filename: str) -> dict:
+def _build_schema(df: pd.DataFrame, filename: str) -> dict:
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     categorical_cols = df.select_dtypes(exclude="number").columns.tolist()
     return {
         "filename": filename,
-        "shape": df.shape,
+        "shape": list(df.shape),
         "columns": df.columns.tolist(),
         "numeric_columns": numeric_cols,
         "categorical_columns": categorical_cols,
         "missing_values": int(df.isnull().sum().sum()),
         "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
     }
+
+
+class SessionManager:
+    def __init__(self):
+        self._cache = get_cache()
+        self._minio = get_minio()
+        self._memory = _memory_cache
+
+    async def get_session(self, session_id: str, db: AsyncSession) -> Optional[dict]:
+        resolved_id = _resolve_id(session_id)
+
+        cache_key = f"session:{resolved_id}"
+        cached = self._cache.get(cache_key)
+        if cached:
+            logger.debug(f"Session cache hit: {resolved_id}")
+            return cached
+
+        result = await db.execute(
+            select(SessionModel).where(SessionModel.session_id == resolved_id)
+        )
+        session_record = result.scalar_one_or_none()
+
+        if session_record is None:
+            return None
+
+        if session_record.expires_at is not None and session_record.expires_at < datetime.utcnow():
+            logger.warning(f"Session expired: {resolved_id}")
+            return None
+
+        session_data = {
+            "session_id": session_record.session_id,
+            "filename": session_record.filename,
+            "file_path": session_record.file_path,
+            "schema": session_record.schema,
+            "row_count": session_record.schema.get("shape", [0, 0])[0] if session_record.schema else 0,
+        }
+
+        self._cache.set(cache_key, session_data)
+        
+        redis_client = await get_redis()
+        await redis_client.cache_set(f"session:{resolved_id}", session_data, ttl=3600)
+
+        return session_data
+
+    async def load_dataframe(self, session_id: str, db: AsyncSession) -> Optional[pd.DataFrame]:
+        resolved_id = _resolve_id(session_id)
+
+        if resolved_id in self._memory:
+            logger.debug(f"DataFrame memory cache hit: {resolved_id}")
+            return self._memory[resolved_id]
+
+        session = await self.get_session(resolved_id, db)
+        if not session:
+            return None
+
+        parquet_buffer = await self._minio.download_parquet(resolved_id)
+        if parquet_buffer is None:
+            return None
+
+        df = pd.read_parquet(parquet_buffer)
+        self._memory[resolved_id] = df
+        
+        logger.debug(f"Loaded DataFrame into memory: {resolved_id}, shape: {df.shape}")
+        return df
+
+    async def cache_session(self, session_id: str, data: dict, ttl: int = 3600) -> None:
+        redis_client = await get_redis()
+        await redis_client.cache_set(f"session:{session_id}", data, ttl)
+
+
+_session_manager = SessionManager()
+
+
+def get_session_manager() -> SessionManager:
+    return _session_manager
+
+
+async def create_session(df: pd.DataFrame, filename: str, db: AsyncSession) -> str:
+    session_id = str(uuid.uuid4())
+
+    parquet_buffer = io.BytesIO()
+    df.to_parquet(parquet_buffer, index=False)
+    parquet_buffer.seek(0)
+    parquet_size = parquet_buffer.getbuffer().nbytes
+
+    minio_client = get_minio()
+    object_path = await minio_client.upload_parquet(session_id, parquet_buffer, parquet_size)
+
+    expires_at = datetime.utcnow() + timedelta(seconds=settings.session_ttl_seconds)
+
+    session_record = SessionModel(
+        session_id=session_id,
+        filename=filename,
+        file_path=object_path,
+        schema=_build_schema(df, filename),
+        expires_at=expires_at,
+    )
+    db.add(session_record)
+    await db.commit()
+
+    cache = get_cache()
+    cache_key = f"session:{session_id}"
+    cache.set(cache_key, {"filename": filename, "schema": _build_schema(df, filename), "file_path": object_path})
+
+    redis_client = await get_redis()
+    await redis_client.cache_set(
+        f"session:{session_id}",
+        {"session_id": session_id, "filename": filename, "file_path": object_path, "row_count": len(df)},
+        ttl=settings.session_ttl_seconds
+    )
+
+    logger.info(f"Created session: {session_id}, file: {object_path}")
+    return session_id
+
+
+async def get_session(session_id: str, db: AsyncSession) -> Optional[dict]:
+    return await _session_manager.get_session(session_id, db)
+
+
+async def get_df(session_id: str, db: AsyncSession) -> Optional[pd.DataFrame]:
+    return await _session_manager.load_dataframe(session_id, db)
+
+
+async def delete_session(session_id: str, db: AsyncSession) -> bool:
+    resolved_id = _resolve_id(session_id)
+
+    result = await db.execute(
+        select(SessionModel).where(SessionModel.session_id == resolved_id)
+    )
+    session_record = result.scalar_one_or_none()
+
+    if session_record is None:
+        return False
+
+    minio_client = get_minio()
+    await minio_client.delete_parquet(resolved_id)
+
+    await db.delete(session_record)
+    await db.commit()
+
+    cache = get_cache()
+    cache.delete(f"session:{resolved_id}")
+
+    if resolved_id in _memory_cache:
+        del _memory_cache[resolved_id]
+
+    redis_client = await get_redis()
+    await redis_client.cache_delete(f"session:{resolved_id}")
+
+    logger.info(f"Deleted session: {resolved_id}")
+    return True
+
+
+async def list_sessions(db: AsyncSession) -> list[str]:
+    result = await db.execute(
+        select(SessionModel.session_id).where(
+            SessionModel.expires_at > datetime.utcnow()
+        )
+    )
+    return [row[0] for row in result.all()]
+
+
+async def refresh_session_ttl(session_id: str, db: AsyncSession) -> bool:
+    resolved_id = _resolve_id(session_id)
+
+    result = await db.execute(
+        select(SessionModel).where(SessionModel.session_id == resolved_id)
+    )
+    session_record = result.scalar_one_or_none()
+
+    if session_record is None:
+        return False
+
+    session_record.expires_at = datetime.utcnow() + timedelta(seconds=settings.session_ttl_seconds)
+    await db.commit()
+
+    return True

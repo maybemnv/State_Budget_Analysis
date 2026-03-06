@@ -106,7 +106,7 @@ async def _invoke(executor: AgentExecutor, payload: dict) -> dict:
     return await executor.ainvoke(payload)
 
 
-async def run_agent(session_id: str, message: str) -> dict:
+async def run_agent(session_id: str, message: str, context: str = "") -> dict:
     """Build and invoke the agent, returning the raw LangChain result dict.
 
     Retries up to 3 times on OutputParserException with exponential back-off.
@@ -117,8 +117,13 @@ async def run_agent(session_id: str, message: str) -> dict:
     )
 
     executor = _build_executor(session_id)
+    
+    input_text = message
+    if context:
+        input_text = f"Previous conversation summary:\n{context}\n\nCurrent question: {message}"
+    
     try:
-        result = await _invoke(executor, {"input": message})
+        result = await _invoke(executor, {"input": input_text})
         logger.info(
             f"Agent run completed: session_id={session_id}, steps={len(result.get('intermediate_steps', []))}"
         )

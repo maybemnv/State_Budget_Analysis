@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 from .config import settings
 from .logging import setup_logging, get_logger, log_request
+from .db import init_db, get_minio, close_redis
 from .routes.upload import router as upload_router
 from .routes.chat import router as chat_router
 from .session import list_sessions
@@ -23,7 +24,17 @@ async def lifespan(app: FastAPI):
     logger.info(f"Max upload size: {settings.max_upload_mb}MB")
     logger.info(f"Debug mode: {settings.debug}")
     logger.info("=" * 50)
+
+    await init_db()
+    logger.info("Database initialized")
+
+    minio = get_minio()
+    await minio.ensure_bucket()
+    logger.info("MinIO bucket ready")
+
     yield
+
+    await close_redis()
     logger.info("DataLens AI Backend Shutting Down")
 
 
@@ -77,11 +88,14 @@ async def health() -> dict:
 @app.get("/sessions")
 async def get_all_sessions() -> dict:
     """List all active sessions (for debugging)."""
-    session_ids = list_sessions()
-    return {
-        "count": len(session_ids),
-        "sessions": session_ids,
-    }
+    from .db import get_db
+    async for db in get_db():
+        session_ids = await list_sessions(db)
+        return {
+            "count": len(session_ids),
+            "sessions": session_ids,
+        }
+    return {"count": 0, "sessions": []}
 
 
 @app.get("/")
