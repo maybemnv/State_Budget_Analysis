@@ -148,7 +148,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                 await save_message(session_id, "user", message, db=db)
 
                 start_time = time.time()
-                result = await run_agent(session_id, message, context=summary)
+                result = await run_agent(session_id, message, context=summary, callback=callback)
                 duration_ms = int((time.time() - start_time) * 1000)
 
                 parsed = parse_output(result.get("output", ""))

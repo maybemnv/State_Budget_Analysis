@@ -10,13 +10,14 @@ import { ThoughtStep } from "./ThoughtStep"
 import { ToolCallCard } from "./ToolCallCard"
 import { BackendStatusIndicator } from "@/components/ui/BackendStatusIndicator"
 import { useWebSocket } from "@/hooks/useWebSocket"
-import type { AgentState, WSMessageType, VegaLiteSpec } from "@/lib/types"
-import { Send, Sparkles } from "lucide-react"
+import type { AgentState, VegaLiteSpec } from "@/lib/types"
+import { Send, Sparkles, Command } from "lucide-react"
 
 interface AgentChatProps {
   sessionId: string
   onChartSpec?: (spec: VegaLiteSpec) => void
   onAgentStateChange?: (state: AgentState) => void
+  onTimelineStep?: (step: { label: string; timestamp: string }) => void
 }
 
 interface ChatMessage {
@@ -32,7 +33,7 @@ interface ChatMessage {
  * AgentChat — Main chat interface for interacting with the DataLens agent.
  * Shows user messages, agent thoughts (typewriter), tool calls, and final answers.
  */
-export function AgentChat({ sessionId, onChartSpec, onAgentStateChange }: AgentChatProps) {
+export function AgentChat({ sessionId, onChartSpec, onAgentStateChange, onTimelineStep }: AgentChatProps) {
   const [input, setInput] = useState("")
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [agentState, setAgentState] = useState<AgentState>("idle")
@@ -44,73 +45,54 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange }: AgentC
     onAgentStateChange?.(state)
   }
 
+  const now = () => new Date().toLocaleTimeString("en-US", { hour12: false })
+
   const { sendMessage, isConnected } = useWebSocket({
     sessionId,
     onThought: (content) => {
       handleAgentStateChange("thinking")
+      onTimelineStep?.({ label: "thinking", timestamp: now() })
       setMessages((prev) => [
         ...prev,
-        {
-          id: `thought-${Date.now()}`,
-          type: "thought",
-          content: content,
-          timestamp: new Date(),
-        },
+        { id: `thought-${Date.now()}`, type: "thought", content, timestamp: new Date() },
       ])
     },
     onToolCall: (tool, args) => {
       handleAgentStateChange("executing")
+      onTimelineStep?.({ label: tool, timestamp: now() })
       setMessages((prev) => [
         ...prev,
-        {
-          id: `tool-${Date.now()}`,
-          type: "tool_call",
-          tool: tool,
-          args: args,
-          content: "",
-          timestamp: new Date(),
-        },
+        { id: `tool-${Date.now()}`, type: "tool_call", tool, args, content: "", timestamp: new Date() },
       ])
     },
     onToolResult: (tool, result) => {
       setMessages((prev) => {
-        // Find the last tool_call and update it with result
-        const lastToolCallIndex = [...prev].reverse().findIndex((m) => m.type === "tool_call")
-        if (lastToolCallIndex === -1) return prev
-
-        const actualIndex = prev.length - 1 - lastToolCallIndex
+        const lastIdx = [...prev].reverse().findIndex((m) => m.type === "tool_call")
+        if (lastIdx === -1) return prev
+        const idx = prev.length - 1 - lastIdx
         const updated = [...prev]
-        updated[actualIndex] = { ...updated[actualIndex], type: "tool_result" as const, content: result }
+        updated[idx] = { ...updated[idx], type: "tool_result" as const, content: result }
         return updated
       })
     },
     onAnswer: (content) => {
       handleAgentStateChange("done")
+      onTimelineStep?.({ label: "answer", timestamp: now() })
       setMessages((prev) => [
         ...prev,
-        {
-          id: `answer-${Date.now()}`,
-          type: "answer",
-          content: content,
-          timestamp: new Date(),
-        },
+        { id: `answer-${Date.now()}`, type: "answer", content, timestamp: new Date() },
       ])
-      // Reset to idle after a delay
       setTimeout(() => handleAgentStateChange("idle"), 2000)
     },
     onChart: (spec) => {
+      onTimelineStep?.({ label: "chart", timestamp: now() })
       onChartSpec?.(spec as VegaLiteSpec)
     },
     onError: (message) => {
       handleAgentStateChange("error")
       setMessages((prev) => [
         ...prev,
-        {
-          id: `error-${Date.now()}`,
-          type: "error",
-          content: message,
-          timestamp: new Date(),
-        },
+        { id: `error-${Date.now()}`, type: "error", content: message, timestamp: new Date() },
       ])
       setTimeout(() => handleAgentStateChange("idle"), 2000)
     },
@@ -244,9 +226,15 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange }: AgentC
               return (
                 <div
                   key={msg.id}
-                  className="rounded-lg border border-success/30 bg-success/5 p-4 text-sm text-text-primary animate-fade-in-up"
+                  className="overflow-hidden rounded-lg border border-success/40 bg-success/5 animate-fade-in-up"
                 >
-                  {String(msg.content)}
+                  <div className="flex items-center gap-2 border-b border-success/30 bg-success/10 px-4 py-2">
+                    <div className="h-2 w-2 rounded-full bg-success" />
+                    <span className="text-xs font-semibold uppercase tracking-widest text-success">Final Answer</span>
+                  </div>
+                  <div className="p-4 text-sm leading-relaxed text-text-primary">
+                    {String(msg.content)}
+                  </div>
                 </div>
               )
             }
@@ -269,13 +257,13 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange }: AgentC
       </ScrollArea>
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="border-t border-border p-4">
+      <form onSubmit={handleSubmit} className="border-t border-border px-4 pb-4 pt-3">
         <div className="flex gap-2">
           <Input
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={isConnected ? "Ask anything about your data..." : "Connecting..."}
+            placeholder={isConnected ? "Type your question..." : "Connecting..."}
             disabled={!isConnected}
             className="flex-1 bg-surface/50 text-text-primary placeholder:text-text-muted"
           />
@@ -286,6 +274,10 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange }: AgentC
           >
             <Send className="h-4 w-4" />
           </Button>
+        </div>
+        <div className="mt-1.5 flex items-center gap-1 text-xs text-text-disabled">
+          <Command className="h-3 w-3" />
+          <span>K for suggestions</span>
         </div>
       </form>
     </div>

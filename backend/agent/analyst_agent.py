@@ -102,11 +102,12 @@ def _build_executor(session_id: str) -> AgentExecutor:
     wait=wait_exponential(multiplier=1, min=1, max=8),
     reraise=True,
 )
-async def _invoke(executor: AgentExecutor, payload: dict) -> dict:
-    return await executor.ainvoke(payload)
+async def _invoke(executor: AgentExecutor, payload: dict, callback=None) -> dict:
+    config = {"callbacks": [callback]} if callback else {}
+    return await executor.ainvoke(payload, config=config)
 
 
-async def run_agent(session_id: str, message: str, context: str = "") -> dict:
+async def run_agent(session_id: str, message: str, context: str = "", callback=None) -> dict:
     """Build and invoke the agent, returning the raw LangChain result dict.
 
     Retries up to 3 times on OutputParserException with exponential back-off.
@@ -123,7 +124,7 @@ async def run_agent(session_id: str, message: str, context: str = "") -> dict:
         input_text = f"Previous conversation summary:\n{context}\n\nCurrent question: {message}"
     
     try:
-        result = await _invoke(executor, {"input": input_text})
+        result = await _invoke(executor, {"input": input_text}, callback=callback)
         logger.info(
             f"Agent run completed: session_id={session_id}, steps={len(result.get('intermediate_steps', []))}"
         )
