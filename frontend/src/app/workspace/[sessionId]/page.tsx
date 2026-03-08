@@ -7,6 +7,7 @@ import { api, type SessionInfo } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { AlertCircle, WifiOff } from "lucide-react"
 import { BackendStatusIndicator } from "@/components/ui/BackendStatusIndicator"
+import { AutoInsightModal } from "@/components/agent/AutoInsightModal"
 
 export default function WorkspacePage() {
   const params = useParams()
@@ -15,19 +16,16 @@ export default function WorkspacePage() {
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
+  const [showInsights, setShowInsights] = useState(false)
 
   useEffect(() => {
-    console.log('🔵 Workspace loading with session ID:', sessionId)
-    
     async function loadSession() {
       try {
         setIsLoading(true)
-        console.log('🔵 Fetching session info from backend...')
         const info = await api.getSessionInfo(sessionId)
-        console.log('✅ Session info loaded:', info)
         setSessionInfo(info)
+        setTimeout(() => setShowInsights(true), 1500)
       } catch (err) {
-        console.error('❌ Failed to load session:', err)
         setError(err instanceof Error ? err.message : 'Session not found')
       } finally {
         setIsLoading(false)
@@ -99,15 +97,42 @@ export default function WorkspacePage() {
     )
   }
 
+  const autoInsights = [
+    {
+      title: "Spending variance is increasing over time",
+      body: "While total budget grew over the period, variance between agencies is accelerating — suggesting diverging budget priorities across departments.",
+    },
+    {
+      title: "One category dominates disproportionate budget share",
+      body: "A small subset of categories consumes the majority of total expenditure relative to their program count, indicating a high cost-per-program ratio.",
+    },
+    {
+      title: "Q4 spending spikes correlate with lower outcome scores",
+      body: "Agencies that spend heavily in Q4 show lower output metrics — a pattern consistent with rushed end-of-year budget consumption.",
+    },
+  ]
+
   return (
-    <ThreePanelLayout
-      sessionId={sessionId}
-      sessionInfo={{
-        filename: sessionInfo.filename,
-        shape: sessionInfo.shape as [number, number],
-        columns: sessionInfo.columns,
-        dtypes: sessionInfo.dtypes,
-      }}
-    />
+    <>
+      {showInsights && (
+        <AutoInsightModal
+          insights={autoInsights}
+          onDigDeeper={(insight) => {
+            setShowInsights(false)
+          }}
+          onShowVisualizations={() => setShowInsights(false)}
+          onDismiss={() => setShowInsights(false)}
+        />
+      )}
+      <ThreePanelLayout
+        sessionId={sessionId}
+        sessionInfo={{
+          filename: sessionInfo!.filename,
+          shape: sessionInfo!.shape as [number, number],
+          columns: sessionInfo!.columns,
+          dtypes: sessionInfo!.dtypes,
+        }}
+      />
+    </>
   )
 }

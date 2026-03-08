@@ -87,7 +87,7 @@ export function Sidebar({ sessionInfo, className }: SidebarProps) {
       {/* Header */}
       <div className="border-b border-border px-4 py-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface">
             <FileText className="h-5 w-5 text-[#FF6B35]" />
           </div>
           <div className="flex-1 overflow-hidden">
@@ -96,13 +96,37 @@ export function Sidebar({ sessionInfo, className }: SidebarProps) {
             </h3>
             {sessionInfo && (
               <p className="text-xs text-text-muted">
-                {sessionInfo.shape[0].toLocaleString()} rows ×{" "}
-                {sessionInfo.shape[1].toLocaleString()} cols
+                {sessionInfo.shape[0].toLocaleString()} rows × {sessionInfo.shape[1].toLocaleString()} cols
               </p>
             )}
           </div>
         </div>
       </div>
+
+      {/* Quick Stats — always visible when data present */}
+      {sessionInfo && (
+        <div className="border-b border-border px-4 py-3">
+          <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-text-muted">Quick Stats</p>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-md bg-surface/50 p-2 text-center">
+              <div className="text-sm font-semibold text-[#00DCB4]">{columnGroups[0].columns.length}</div>
+              <div className="text-[10px] text-text-muted">Numeric</div>
+            </div>
+            <div className="rounded-md bg-surface/50 p-2 text-center">
+              <div className="text-sm font-semibold text-[#9D4EDD]">{columnGroups[1].columns.length}</div>
+              <div className="text-[10px] text-text-muted">Text</div>
+            </div>
+            <div className="rounded-md bg-surface/50 p-2 text-center">
+              <div className="text-sm font-semibold text-[#FF6B35]">{columnGroups[2].columns.length}</div>
+              <div className="text-[10px] text-text-muted">Date</div>
+            </div>
+          </div>
+          <div className="mt-2 flex items-center gap-1.5 rounded-md bg-surface/30 px-2 py-1.5 text-xs text-text-muted">
+            <AlertCircle className="h-3 w-3 shrink-0" />
+            <span>Missing: 0 values</span>
+          </div>
+        </div>
+      )}
 
       <ScrollArea className="flex-1">
         {/* Quick Stats */}

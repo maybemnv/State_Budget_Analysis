@@ -157,14 +157,35 @@ export default function HomePage() {
           )}
 
           {uploadState === "parsing" && (
-            <div className="flex flex-col items-center py-12">
-              <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-surface">
-                <Loader2 className="h-8 w-8 animate-spin text-[#FF6B35]" />
+            <div className="flex flex-col items-center py-8">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-surface">
+                <Loader2 className="h-6 w-6 animate-spin text-[#FF6B35]" />
               </div>
-              <h3 className="mb-2 text-lg font-medium text-text-primary">
-                {fileName}
-              </h3>
-              <p className="mb-4 text-sm text-text-muted">Processing dataset...</p>
+              <h3 className="mb-1 text-sm font-medium text-text-primary">{fileName}</h3>
+              <p className="mb-4 text-xs text-text-muted">Parsing rows...</p>
+
+              {/* Cascade table animation */}
+              <div className="w-full overflow-hidden rounded-md border border-border text-[10px]">
+                <div className="grid grid-cols-4 border-b border-border bg-elevated px-3 py-1.5 font-medium text-text-muted animate-fade-in-up">
+                  {["date", "agency", "category", "amount"].map((h) => (
+                    <span key={h}>{h}</span>
+                  ))}
+                </div>
+                {[
+                  ["2024-01", "AG-001", "A", "$123,456"],
+                  ["2024-02", "AG-002", "B", "$234,567"],
+                  ["2024-03", "AG-001", "C", "$345,678"],
+                  ["...", "...", "...", "..."],
+                ].map((row, i) => (
+                  <div
+                    key={i}
+                    className="grid grid-cols-4 px-3 py-1.5 text-text-secondary opacity-0 animate-fade-in-up border-b border-border/50 last:border-0"
+                    style={{ animationDelay: `${(i + 1) * 150}ms`, animationFillMode: "forwards" }}
+                  >
+                    {row.map((cell, j) => <span key={j}>{cell}</span>)}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
