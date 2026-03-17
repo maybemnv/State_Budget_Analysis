@@ -143,7 +143,6 @@ Create a `.env` file with a valid API key (required for test imports):
 ```env
 GEMINI_API_KEY=your_api_key_here
 ```
-
 ### Run All Tests
 
 ```bash
