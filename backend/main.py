@@ -1,15 +1,15 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from contextlib import asynccontextmanager
 
 from .config import settings
-from .logging import setup_logging, get_logger, log_request
-from .db import init_db, get_minio, close_redis
-from .routes.upload import router as upload_router
+from .db import close_redis, get_minio, init_db
+from .logging import get_logger, log_request, setup_logging
 from .routes.chat import router as chat_router
+from .routes.upload import router as upload_router
 from .session import list_sessions
 from .tasks.cleanup import cleanup_expired_sessions
 
@@ -97,6 +97,7 @@ async def health() -> dict:
 async def get_all_sessions() -> dict:
     """List all active sessions (for debugging)."""
     from .db import get_db
+
     async with get_db() as db:
         session_ids = await list_sessions(db)
         return {
