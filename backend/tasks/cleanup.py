@@ -6,7 +6,7 @@ from ..db import get_db
 from ..db.minio_client import get_minio
 from ..db.models import Chart, Message, ToolRun
 from ..db.models import Session as SessionModel
-from ..logging import get_logger
+from ..logger import get_logger
 
 logger = get_logger(__name__)
 

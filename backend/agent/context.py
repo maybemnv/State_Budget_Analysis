@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..config import settings
 from ..db import get_db as get_db_session
 from ..db.models import Message
-from ..logging import get_logger
+from ..logger import get_logger
 
 logger = get_logger(__name__)
 
