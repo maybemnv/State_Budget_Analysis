@@ -46,23 +46,31 @@ def _build_schema(df: pd.DataFrame, filename: str) -> dict:
 
 async def _store_df_in_redis(session_id: str, df: pd.DataFrame) -> None:
     """Serialise DataFrame to Parquet bytes and store in Redis."""
-    buf = io.BytesIO()
-    df.to_parquet(buf, index=False)
-    redis = await get_redis()
-    await redis.client.setex(
-        f"df:{session_id}",
-        settings.session_ttl_seconds,
-        buf.getvalue(),
-    )
+    try:
+        buf = io.BytesIO()
+        df.to_parquet(buf, index=False)
+        redis = await get_redis()
+        await redis.client.setex(
+            f"df:{session_id}",
+            settings.session_ttl_seconds,
+            buf.getvalue(),
+        )
+    except Exception as e:
+        logger.warning(f"Failed to store DataFrame in Redis (session {session_id}): {e}")
+        # Continue without Redis - the data will be stored in PostgreSQL only
 
 
 async def _load_df_from_redis(session_id: str) -> Optional[pd.DataFrame]:
     """Fetch Parquet bytes from Redis and deserialise to DataFrame."""
-    redis = await get_redis()
-    data = await redis.client.get(f"df:{session_id}")
-    if data is None:
+    try:
+        redis = await get_redis()
+        data = await redis.client.get(f"df:{session_id}")
+        if data is None:
+            return None
+        return pd.read_parquet(io.BytesIO(data))
+    except Exception as e:
+        logger.warning(f"Failed to load DataFrame from Redis (session {session_id}): {e}")
         return None
-    return pd.read_parquet(io.BytesIO(data))
 
 
 async def create_session(df: pd.DataFrame, filename: str, db: AsyncSession) -> str:
@@ -86,12 +94,15 @@ async def create_session(df: pd.DataFrame, filename: str, db: AsyncSession) -> s
     cache = get_cache()
     cache.set(f"session:{session_id}", {"filename": filename, "schema": schema})
 
-    redis = await get_redis()
-    await redis.cache_set(
-        f"session:{session_id}",
-        {"session_id": session_id, "filename": filename, "row_count": len(df)},
-        ttl=settings.session_ttl_seconds,
-    )
+    try:
+        redis = await get_redis()
+        await redis.cache_set(
+            f"session:{session_id}",
+            {"session_id": session_id, "filename": filename, "row_count": len(df)},
+            ttl=settings.session_ttl_seconds,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to set Redis cache for session {session_id}: {e}")
 
     logger.info(f"Created session: {session_id}, rows={df.shape[0]}, cols={df.shape[1]}")
     return session_id
@@ -127,8 +138,11 @@ async def get_session(session_id: str, db: AsyncSession) -> Optional[dict]:
 
     cache.set(f"session:{resolved_id}", session_data)
 
-    redis = await get_redis()
-    await redis.cache_set(f"session:{resolved_id}", session_data, ttl=3600)
+    try:
+        redis = await get_redis()
+        await redis.cache_set(f"session:{resolved_id}", session_data, ttl=3600)
+    except Exception as e:
+        logger.warning(f"Failed to set Redis cache for session {resolved_id}: {e}")
 
     return session_data
 
@@ -168,9 +182,12 @@ async def delete_session(session_id: str, db: AsyncSession) -> bool:
     if resolved_id in _memory_cache:
         del _memory_cache[resolved_id]
 
-    redis = await get_redis()
-    await redis.cache_delete(f"session:{resolved_id}")
-    await redis.client.delete(f"df:{resolved_id}")
+    try:
+        redis = await get_redis()
+        await redis.cache_delete(f"session:{resolved_id}")
+        await redis.client.delete(f"df:{resolved_id}")
+    except Exception as e:
+        logger.warning(f"Failed to delete Redis data for session {resolved_id}: {e}")
 
     logger.info(f"Deleted session: {resolved_id}")
     return True
@@ -199,7 +216,10 @@ async def refresh_session_ttl(session_id: str, db: AsyncSession) -> bool:
     record.expires_at = datetime.utcnow() + timedelta(seconds=settings.session_ttl_seconds)
     await db.commit()
 
-    redis = await get_redis()
-    await redis.client.expire(f"df:{resolved_id}", settings.session_ttl_seconds)
+    try:
+        redis = await get_redis()
+        await redis.client.expire(f"df:{resolved_id}", settings.session_ttl_seconds)
+    except Exception as e:
+        logger.warning(f"Failed to refresh Redis TTL for session {resolved_id}: {e}")
 
     return True

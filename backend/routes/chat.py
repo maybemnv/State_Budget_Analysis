@@ -127,8 +127,11 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
 
         logger.info(f"WebSocket accepted: session_id={session_id}")
 
-        redis = await get_redis()
-        await redis.register_ws(session_id, "websocket")
+        try:
+            redis = await get_redis()
+            await redis.register_ws(session_id, "websocket")
+        except Exception as e:
+            logger.warning(f"Failed to register WebSocket in Redis for session {session_id}: {e}")
 
         callback = WebSocketStreamingCallback(websocket)
 
@@ -188,7 +191,10 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
 
         except WebSocketDisconnect:
             logger.info(f"WebSocket disconnected: session_id={session_id}")
-            await redis.unregister_ws(session_id)
+            try:
+                await redis.unregister_ws(session_id)
+            except Exception as e:
+                logger.warning(f"Failed to unregister WebSocket from Redis for session {session_id}: {e}")
         except Exception as e:
             logger.exception(f"WebSocket error: session_id={session_id}, error={e}")
             try:
