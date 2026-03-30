@@ -279,26 +279,7 @@ ws.onclose = () => {
 | `error` | Error occurred | `{ type, message }` |
 | `done` | Stream finished | `{ type }` |
 
-**Python Example (async):**
-```python
-import asyncio
-import json
-import websockets
 
-async def chat():
-    uri = "ws://localhost:8000/ws/sess_abc123xyz"
-    async with websockets.connect(uri) as ws:
-        await ws.send(json.dumps({"message": "What trends do you see?"}))
-        
-        async for message in ws:
-            data = json.loads(message)
-            print(f"[{data['type']}] {data.get('content', '')}")
-            
-            if data['type'] == 'done':
-                break
-
-asyncio.run(chat())
-```
 
 ### Health
 
@@ -364,54 +345,6 @@ X-RateLimit-Reset: 1711929600
 Retry-After: 45
 ```
 
-## SDK Examples
-
-### Python
-
-```python
-import requests
-
-BASE_URL = "http://localhost:8000"
-
-# Upload file
-with open("data.csv", "rb") as f:
-    response = requests.post(f"{BASE_URL}/upload", files={"file": f})
-    session_id = response.json()["session_id"]
-
-# Chat
-response = requests.post(
-    f"{BASE_URL}/chat/{session_id}",
-    json={"message": "Show summary statistics"}
-)
-print(response.json()["answer"])
-```
-
-### JavaScript/TypeScript
-
-```typescript
-async function uploadFile(file: File): Promise<string> {
-  const formData = new FormData();
-  formData.append('file', file);
-  
-  const response = await fetch('http://localhost:8000/upload', {
-    method: 'POST',
-    body: formData
-  });
-  
-  const data = await response.json();
-  return data.session_id;
-}
-
-async function chat(sessionId: string, message: string) {
-  const response = await fetch(`http://localhost:8000/chat/${sessionId}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message })
-  });
-  
-  return response.json();
-}
-```
 
 ## OpenAPI/Swagger
 
