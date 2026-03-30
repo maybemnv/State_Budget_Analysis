@@ -268,4 +268,4 @@ uv run pytest --cov=backend         # With coverage (requires pytest-cov)
 
 ## License
 
-MIT
+[MIT](./LICENSE)
