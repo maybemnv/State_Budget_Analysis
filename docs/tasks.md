@@ -54,39 +54,39 @@ Based on [PRD v2.0](docs/PRD.md) — **Terminal Aesthetic Edition**
 ## Phase 3: Frontend Shell (Week 3–4)
 **Goal:** Next.js 15 application with terminal aesthetic and real-time communication.
 
-- [ ] **Frontend Setup**
-  - [ ] Initialize Next.js 15 (App Router) project
-  - [ ] Install and configure Tailwind CSS with custom theme
-  - [ ] Install `shadcn/ui` — use as base, not final design
-  - [ ] Set up typography: Geist Mono (body), Satoshi (headings)
-  - [ ] Configure color tokens: warm black (#0A0A0F), burnt orange (#FF6B35), teal (#00DCB4)
+- [X] **Frontend Setup**
+  - [X] Initialize Next.js 15 (App Router) project
+  - [X] Install and configure Tailwind CSS with custom theme
+  - [X] Install `shadcn/ui` — use as base, not final design
+  - [X] Set up typography: Geist Mono (body), Satoshi (headings)
+  - [X] Configure color tokens: warm black (#0A0A0F), burnt orange (#FF6B35), teal (#00DCB4)
 
-- [ ] **Core Layout**
-  - [ ] Implement Three-Panel Layout (Sidebar 280px, Chat flexible, Viz 360px)
-  - [ ] Build Sidebar component (File info, session controls, column browser)
-  - [ ] Implement agent timeline scrubber at bottom
+- [X] **Core Layout**
+  - [X] Implement Three-Panel Layout (Sidebar 280px, Chat flexible, Viz 360px)
+  - [X] Build Sidebar component (File info, session controls, column browser)
+  - [X] Implement agent timeline scrubber at bottom
 
-- [ ] **Agent Components**
-  - [ ] Build `AgentAvatar` — animated orb that pulses/shifts color
-  - [ ] Create `ThoughtStep` with typewriter animation (~60 WPM)
-  - [ ] Create `ToolCallCard` that builds itself (args populate one by one)
-  - [ ] Implement `AgentChat` with message thread
+- [X] **Agent Components**
+  - [X] Build `AgentAvatar` — animated orb that pulses/shifts color
+  - [X] Create `ThoughtStep` with typewriter animation (~60 WPM)
+  - [X] Create `ToolCallCard` that builds itself (args populate one by one)
+  - [X] Implement `AgentChat` with message thread
 
-- [ ] **Communication**
-  - [ ] Implement `useWebSocket` hook with message queue
-  - [ ] Define TypeScript interfaces for WebSocket message types
-  - [ ] Add typing indicator when agent is thinking
+- [X] **Communication**
+  - [X] Implement `useWebSocket` hook with message queue
+  - [X] Define TypeScript interfaces for WebSocket message types
+  - [X] Add typing indicator when agent is thinking
 
-- [ ] **File Upload**
-  - [ ] Create Drag-and-Drop upload component
-  - [ ] Implement "unfold" animation — rows animate in as parsed
-  - [ ] Connect upload to backend API
-  - [ ] Add upload progress indicator
+- [X] **File Upload**
+  - [X] Create Drag-and-Drop upload component
+  - [X] Implement "unfold" animation — rows animate in as parsed
+  - [X] Connect upload to backend API
+  - [X] Add upload progress indicator
 
-- [ ] **Command Palette**
-  - [ ] Implement `Cmd+K` command palette
-  - [ ] Context-aware suggested queries based on data type
-  - [ ] Keyboard-first navigation
+- [X] **Command Palette**
+  - [X] Implement `Cmd+K` command palette
+  - [X] Context-aware suggested queries based on data type
+  - [X] Keyboard-first navigation
 
 ## Phase 4: Visualizations (Week 4–5)
 **Goal:** High-quality 2D and 3D data visualization with post-processing effects.
@@ -130,9 +130,9 @@ Based on [PRD v2.0](docs/PRD.md) — **Terminal Aesthetic Edition**
 
 - [ ] **Performance & Deployment**
   - [ ] Test with large files (50MB+) and optimize
-  - [ ] Create `Dockerfile` for Backend
-  - [ ] Create `Dockerfile` for Frontend
-  - [ ] Create `docker-compose.yml` for full stack orchestration
+  - [X] Create `Dockerfile` for Backend
+  - [X] Create `Dockerfile` for Frontend
+  - [X] Create `docker-compose.yml` for full stack orchestration
   - [x] Write `README.md` with setup instructions and test commands
 
 ---
@@ -146,40 +146,3 @@ Before marking any UI task complete, ask:
 - [ ] Does it **build itself**? (nothing appears instantly — everything animates in)
 - [ ] Does it fit the **terminal aesthetic**? (monospace data, warm blacks, burnt orange accents)
 - [ ] Would a user **screenshot this**? (if not, why not?)
-
----
-
-## Test Suite Status
-
-| Suite | Tests | Status |
-|-------|-------|--------|
-| `test_api.py` | 6 | ✅ Passing |
-| `test_statistical.py` | 11 | ✅ Passing |
-| `test_ml.py` | 8 | ✅ Passing |
-| `test_time_series.py` | 10 | ✅ Passing |
-| `test_benchmarks.py` | 35 | ✅ Passing |
-| **Total** | **70** | **✅ All Passing** |
-
----
-
-## Open Tasks — Priority Order
-
-**P0 (Do First):**
-1. Custom theme (warm black, burnt orange, teal) — replaces default slate/indigo
-2. Typewriter effect on agent thoughts
-3. Agent avatar (animated orb)
-
-**P1 (Core Experience):**
-4. Tool call cards that build themselves
-5. 3D visualizations with depth-of-field + glow
-6. Cmd+K command palette
-
-**P2 (Differentiators):**
-7. Force-directed correlation graph
-8. Auto-Insight Mode
-9. Agent timeline scrubber
-
-**P3 (Polish):**
-10. Sound design
-11. Chart draw-in animations
-12. Viz canvas expand on insight

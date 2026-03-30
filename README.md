@@ -8,14 +8,18 @@ An autonomous data analysis platform powered by a LangChain ReAct agent and Goog
 backend/
   main.py              FastAPI application entry point
   config.py            Settings loaded from .env via pydantic-settings
-  session.py           In-memory session store (upload → session_id)
+  session.py           Async database session store with Redis caching
   schemas.py           Pydantic request / response / tool-input models
   streaming.py         WebSocket streaming callback for LangChain events
+  db/                  PostgreSQL + Redis/Upstash integration
+    models.py          SQLAlchemy models (Message, ToolRun, Chart, Session)
+    database.py        Async engine and session management
   agent/
     analyst_agent.py   ReAct agent construction (Gemini LLM + tools + prompt)
+    output_parser.py   Structured output parsing for answers and charts
   routes/
-    upload.py          POST /upload, GET /sessions/{session_id}
-    chat.py            POST /chat/{session_id}, WS /ws/{session_id}
+    upload.py          POST /upload, GET|DELETE /sessions/{session_id}
+    chat.py            POST /chat/{session_id}, WS /ws/{session_id}, message/chart history
   tools/
     guards.py          Shared session guard utility
     dataset_tools.py   describe_dataset, generate_chart_spec
@@ -26,18 +30,27 @@ backend/
     statistical.py     Core statistical computation functions
     ml.py              PCA, clustering, regression, classification, anomaly detection
     time_series/       Preprocessing, decomposition, stationarity, forecasting
+  tasks/
+    cleanup.py         Expired session cleanup job
+frontend/              Next.js 14 + React + TypeScript application
 ```
 
 ## Requirements
 
 - Python 3.13+
 - [uv](https://github.com/astral-sh/uv) package manager
+- PostgreSQL 15+
+- Redis (local) or Upstash Redis (cloud)
 - Google Gemini API key
+- Node.js 20+ (for frontend)
 
 ## Setup
 
+### Backend
+
 ```bash
 # Create and activate virtual environment
+cd backend
 uv venv
 .venv\Scripts\Activate   # Windows
 source .venv/bin/activate # Unix
@@ -49,62 +62,134 @@ uv sync
 Create a `.env` file in the project root:
 
 ```env
+# Required
 GEMINI_API_KEY=your_api_key_here
+DB_USER=your_db_user
+DB_PASSWORD=your_db_password
+
+# Optional (with defaults)
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_NAME=datalens
+MAX_UPLOAD_MB=100
+SESSION_TTL_SECONDS=3600
+ENVIRONMENT=development
+LOG_LEVEL=INFO
+
+# Redis (choose one)
+REDIS_URL=redis://127.0.0.1:6379/0
+# OR for Upstash:
+UPSTASH_REDIS_REST_URL=https://your-url.upstash.io
+UPSTASH_REDIS_REST_TOKEN=your_token
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+```
+
+Create `.env.local`:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
 ## Running
 
+### Development
+
 ```bash
+# Terminal 1: Backend
 uv run uvicorn backend.main:app --reload
+
+# Terminal 2: Frontend
+cd frontend
+npm run dev
 ```
 
-The API will be available at `http://127.0.0.1:8000`. Interactive docs at `/docs`.
+The API will be at `http://127.0.0.1:8000`. Frontend at `http://localhost:3000`.
+Interactive API docs at `/docs`.
+
+### Docker
+
+```bash
+# Development
+docker-compose up
+
+# Production
+docker-compose -f docker-compose.prod.yaml up
+```
 
 ## API Reference
 
-### Upload a dataset
+### Upload
 
+**POST /upload**
 ```
-POST /upload
 Content-Type: multipart/form-data
-
 file: <CSV | XLSX | XLS | Parquet>
 ```
 
-Returns a `session_id` that is used for all subsequent requests.
+**GET /sessions/{session_id}**
+Returns dataset metadata (shape, columns, dtypes, missing values).
 
-### Chat (HTTP)
+**DELETE /sessions/{session_id}**
+Delete a session and its data.
 
-```
-POST /chat/{session_id}
-Content-Type: application/json
+**GET /sessions**
+List all active session IDs.
 
+### Chat
+
+**POST /chat/{session_id}**
+```json
 { "message": "What are the top spending categories?" }
 ```
 
-Returns the agent's final answer and the intermediate tool steps.
-
-### Chat (WebSocket)
-
-```
-WS /ws/{session_id}
-```
-
-Streams agent events as JSON frames: `thought`, `tool_call`, `tool_result`, `answer`, `error`, `done`.
-
-### Session info
-
-```
-GET /sessions/{session_id}
+Response:
+```json
+{
+  "answer": "string",
+  "chart_spec": { /* Vega-Lite spec */ },
+  "has_error": false,
+  "steps": [{ "tool": "...", "args": {}, "result": {} }]
+}
 ```
 
-Returns dataset metadata (shape, columns, dtypes) without the raw data.
+**WS /ws/{session_id}**
+Streaming WebSocket endpoint. Sends events:
+- `thought` — Agent reasoning
+- `tool_call` — Tool execution start
+- `tool_result` — Tool execution complete
+- `chart` — Vega-Lite chart specification
+- `answer` — Final response
+- `error` — Error message
+- `done` — Stream complete
 
-### Health check
+Message format:
+```json
+{ "message": "your question here" }
+```
 
+### Chat History
+
+**GET /chat/{session_id}/messages**
+Returns conversation history with tool runs.
+
+**GET /chat/{session_id}/charts**
+Returns all charts generated in the session.
+
+### Health
+
+**GET /health**
+```json
+{ "status": "ok", "version": "2.0.0" }
 ```
-GET /health
-```
+
+**GET /**
+Root endpoint with API overview.
 
 ## Supported File Types
 
@@ -142,7 +227,10 @@ Create a `.env` file with a valid API key (required for test imports):
 
 ```env
 GEMINI_API_KEY=your_api_key_here
+DB_USER=test_user
+DB_PASSWORD=test_password
 ```
+
 ### Run All Tests
 
 ```bash
@@ -177,3 +265,7 @@ uv run pytest --cov=backend         # With coverage (requires pytest-cov)
 | `test_time_series.py` | 10 | ADF/KPSS tests, ARIMA/Prophet forecasting, decomposition |
 | `test_benchmarks.py` | 35 | Query-to-tool mapping validation, output parser |
 | **Total** | **70** | All backend tests |
+
+## License
+
+MIT
