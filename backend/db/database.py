@@ -24,7 +24,6 @@ async_session_maker = async_sessionmaker(
 
 
 async def init_db() -> None:
-    """Initialize database tables."""
     from .models import Base
 
     async with engine.begin() as conn:
@@ -34,7 +33,6 @@ async def init_db() -> None:
 
 @asynccontextmanager
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Get database session."""
     async with async_session_maker() as session:
         try:
             yield session
@@ -46,7 +44,6 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def get_db_dependency() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency for database sessions."""
     async with async_session_maker() as session:
         try:
             yield session

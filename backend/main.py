@@ -16,7 +16,6 @@ from .tasks.cleanup import cleanup_expired_sessions
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan - startup and shutdown events."""
     setup_logging()
     logger = get_logger(__name__)
     logger.info("=" * 50)
@@ -70,7 +69,6 @@ app.add_middleware(
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Log all HTTP requests with timing."""
     import time
 
     start = time.perf_counter()
@@ -85,14 +83,12 @@ app.include_router(chat_router)
 
 
 @app.get("/health")
-async def health() -> dict:
-    """Health check endpoint."""
+async def health_check():
     return {"status": "ok", "version": "2.0.0"}
 
 
 @app.get("/sessions")
-async def get_all_sessions() -> dict:
-    """List all active sessions (for debugging)."""
+async def get_all_sessions():
     from .db import get_db
 
     async with get_db() as db:
@@ -104,8 +100,7 @@ async def get_all_sessions() -> dict:
 
 
 @app.get("/")
-async def root() -> dict:
-    """Root endpoint with API info."""
+async def root():
     return {
         "name": "DataLens AI API",
         "version": "2.0.0",
@@ -123,7 +118,6 @@ async def root() -> dict:
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Global exception handler."""
     logger.exception(f"Unhandled exception: {exc}")
     return JSONResponse(
         status_code=500,

@@ -45,7 +45,6 @@ def _build_schema(df: pd.DataFrame, filename: str) -> dict:
 
 
 async def _store_df_in_redis(session_id: str, df: pd.DataFrame) -> None:
-    """Serialise DataFrame to Parquet bytes and store in Redis."""
     try:
         buf = io.BytesIO()
         df.to_parquet(buf, index=False)
@@ -61,7 +60,6 @@ async def _store_df_in_redis(session_id: str, df: pd.DataFrame) -> None:
 
 
 async def _load_df_from_redis(session_id: str) -> Optional[pd.DataFrame]:
-    """Fetch Parquet bytes from Redis and deserialise to DataFrame."""
     try:
         redis = await get_redis()
         data = await redis.client.get(f"df:{session_id}")
