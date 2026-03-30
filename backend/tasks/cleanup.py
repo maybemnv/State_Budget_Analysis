@@ -15,9 +15,7 @@ async def cleanup_expired_sessions() -> int:
 
     Returns the number of sessions deleted.
     """
-    deleted_count = 0
-
-    async for db in get_db():
+    async with get_db() as db:
         result = await db.execute(
             select(SessionModel).where(SessionModel.expires_at < datetime.utcnow())
         )
@@ -44,8 +42,6 @@ async def cleanup_expired_sessions() -> int:
         logger.info(f"Cleaned up {deleted_count} expired sessions")
         return deleted_count
 
-    return deleted_count
-
 
 async def cleanup_old_messages(days: int = 30) -> int:
     """Delete messages older than specified days (for all non-expired sessions).
@@ -53,9 +49,8 @@ async def cleanup_old_messages(days: int = 30) -> int:
     Returns the number of messages deleted.
     """
     cutoff = datetime.utcnow() - timedelta(days=days)
-    deleted_count = 0
-
-    async for db in get_db():
+    
+    async with get_db() as db:
         result = await db.execute(select(Message).where(Message.created_at < cutoff))
         old_messages = result.scalars().all()
 
@@ -72,5 +67,3 @@ async def cleanup_old_messages(days: int = 30) -> int:
 
         logger.info(f"Cleaned up {deleted_count} old messages")
         return deleted_count
-
-    return deleted_count

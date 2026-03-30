@@ -43,14 +43,13 @@ async def _summarize_messages(messages: list[Message]) -> str:
 async def build_agent_context(session_id: str) -> list[dict]:
     """Build message list for LLM - last N messages + summary if needed"""
 
-    async for db in get_db_session():
+    async with get_db_session() as db:
         result = await db.execute(
             select(Message)
             .where(Message.session_id == session_id)
             .order_by(Message.created_at)
         )
         messages = result.scalars().all()
-        break
 
     if not messages:
         return []
@@ -75,7 +74,7 @@ async def build_agent_context(session_id: str) -> list[dict]:
 async def get_conversation_summary(session_id: str) -> str:
     """Get a simple text summary of the conversation for short context"""
 
-    async for db in get_db_session():
+    async with get_db_session() as db:
         result = await db.execute(
             select(Message)
             .where(Message.session_id == session_id)
@@ -83,7 +82,6 @@ async def get_conversation_summary(session_id: str) -> str:
             .limit(LLM_CONTEXT_MESSAGES)
         )
         messages = result.scalars().all()
-        break
 
     if not messages:
         return "No previous conversation."

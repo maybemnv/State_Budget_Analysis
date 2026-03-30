@@ -6,7 +6,7 @@ import pandas as pd
 from fastapi import APIRouter, File, UploadFile, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..db import get_db
+from ..db import get_db_dependency
 from ..session import create_session, get_session, delete_session
 from ..schemas import UploadResponse, SessionInfo
 from ..config import settings
@@ -45,7 +45,7 @@ def _clean(df: pd.DataFrame) -> pd.DataFrame:
 @router.post("/upload", response_model=UploadResponse)
 async def upload_file(
     file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_dependency),
 ) -> UploadResponse:
     filename = file.filename or "unknown"
     suffix = Path(filename).suffix.lower()
@@ -87,7 +87,7 @@ async def upload_file(
 @router.get("/sessions/{session_id}", response_model=SessionInfo)
 async def get_session_info(
     session_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_dependency),
 ) -> dict:
     session = await get_session(session_id, db)
     if session is None:
@@ -109,7 +109,7 @@ async def get_session_info(
 @router.delete("/sessions/{session_id}")
 async def delete_session_endpoint(
     session_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_dependency),
 ) -> dict:
     session = await get_session(session_id, db)
     if session is None:

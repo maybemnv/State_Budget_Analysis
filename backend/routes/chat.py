@@ -7,7 +7,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, De
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..db import get_db, get_redis
+from ..db import get_db, get_redis, get_db_dependency
 from ..db.models import Message, ToolRun, Chart
 from ..session import get_session as get_session_data, refresh_session_ttl
 from ..agent.analyst_agent import run_agent
@@ -115,7 +115,7 @@ async def get_conversation_summary(session_id: str, db: AsyncSession) -> str:
 async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
     await websocket.accept()
 
-    async for db in get_db():
+    async with get_db() as db:
         session = await get_session_data(session_id, db)
         if session is None:
             logger.warning(f"WebSocket rejected: session not found: {session_id}")
@@ -195,15 +195,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                 await callback._send({"type": "error", "message": f"Server error: {str(e)}"})
             except Exception:
                 pass
-        finally:
-            break
 
 
 @router.post("/chat/{session_id}", response_model=ChatResponse)
 async def chat(
     session_id: str,
     body: ChatRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_dependency),
 ) -> ChatResponse:
     session = await get_session_data(session_id, db)
     if session is None:
@@ -270,7 +268,7 @@ async def chat(
 @router.get("/chat/{session_id}/messages")
 async def get_messages(
     session_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_dependency),
 ) -> dict:
     result = await db.execute(
         select(Message)
@@ -288,7 +286,7 @@ async def get_messages(
 @router.get("/chat/{session_id}/charts")
 async def get_charts(
     session_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_dependency),
 ) -> dict:
     result = await db.execute(
         select(Chart)
