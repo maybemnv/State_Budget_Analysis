@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import settings
-from .db import close_redis, get_minio, init_db
+from .db import close_redis, init_db
 from .logger import get_logger, log_request, setup_logging
 from .routes.chat import router as chat_router
 from .routes.upload import router as upload_router
@@ -29,9 +29,6 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("Database initialized")
 
-    minio = get_minio()
-    await minio.ensure_bucket()
-    logger.info("MinIO bucket ready")
 
     try:
         deleted = await cleanup_expired_sessions()

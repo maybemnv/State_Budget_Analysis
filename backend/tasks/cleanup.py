@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 from sqlalchemy import delete, select
 
 from ..db import get_db
-from ..db.minio_client import get_minio
 from ..db.models import Chart, Message, ToolRun
 from ..db.models import Session as SessionModel
 from ..logger import get_logger
@@ -28,15 +27,6 @@ async def cleanup_expired_sessions() -> int:
             return 0
 
         logger.info(f"Found {len(expired)} expired sessions to clean up")
-
-        minio_client = get_minio()
-
-        for session in expired:
-            try:
-                await minio_client.delete_parquet(session.session_id)
-                logger.debug(f"Deleted parquet: {session.session_id}")
-            except Exception as e:
-                logger.error(f"Failed to delete parquet for {session.session_id}: {e}")
 
         session_ids = [s.session_id for s in expired]
 

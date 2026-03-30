@@ -37,8 +37,6 @@ dependencies = [
     "alembic>=1.15",
     # Database - Redis
     "redis>=5.0",
-    # Object Storage - MinIO
-    "minio>=7.2",
     # Caching
     "cachetools>=5.5",
     # Streamlit (legacy — v1 only)

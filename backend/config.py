@@ -9,13 +9,8 @@ class Settings(BaseSettings):
     session_ttl_seconds: int = 3600
     debug: bool = False
 
-    database_url: str = "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/datalens"
+    database_url: str = "postgresql+asyncpg://postgres:Datalens90210@127.0.0.1:5432/datalens"
     redis_url: str = "redis://127.0.0.1:6379/0"
-
-    minio_url: str = "http://localhost:9000"
-    minio_bucket: str = "datalens"
-    minio_access_key: str = "minioadmin"
-    minio_secret_key: str = "minioadmin"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

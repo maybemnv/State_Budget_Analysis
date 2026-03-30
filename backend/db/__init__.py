@@ -1,7 +1,6 @@
 from .database import get_db, init_db, engine
 from .models import Base, Session, Message, ToolRun, Chart
 from .redis_client import get_redis, RedisClient, close_redis
-from .minio_client import get_minio, MinioClient
 from .cache import get_cache, CacheClient
 
 __all__ = [
@@ -16,8 +15,6 @@ __all__ = [
     "get_redis",
     "RedisClient",
     "close_redis",
-    "get_minio",
-    "MinioClient",
     "get_cache",
     "CacheClient",
 ]
