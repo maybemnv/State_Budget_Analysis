@@ -8,7 +8,6 @@ from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier, Isol
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, classification_report
 
-
 def perform_pca(
     df: pd.DataFrame,
     columns: Optional[list[str]] = None,
@@ -45,7 +44,6 @@ def perform_pca(
         "columns": cols,
     }
 
-
 def perform_clustering(
     df: pd.DataFrame,
     columns: Optional[list[str]] = None,
@@ -79,7 +77,6 @@ def perform_clustering(
         "columns": cols,
     }
 
-
 def detect_anomalies(
     df: pd.DataFrame,
     columns: Optional[list[str]] = None,
@@ -102,7 +99,6 @@ def detect_anomalies(
         "scores": scores.tolist(),
         "columns": cols,
     }
-
 
 def train_regression_model(
     df: pd.DataFrame,
@@ -137,7 +133,6 @@ def train_regression_model(
         "train_size": len(X_train),
         "test_size": len(X_test),
     }
-
 
 def train_classification_model(
     df: pd.DataFrame,

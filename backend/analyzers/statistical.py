@@ -2,7 +2,6 @@ from typing import Optional
 import pandas as pd
 import numpy as np
 
-
 def descriptive_stats(df: pd.DataFrame, columns: Optional[list[str]] = None) -> dict:
     cols = columns if columns is not None else df.select_dtypes(include="number").columns.tolist()
     if not cols:
@@ -11,7 +10,6 @@ def descriptive_stats(df: pd.DataFrame, columns: Optional[list[str]] = None) -> 
     result["skew"] = df[cols].skew()
     result["kurtosis"] = df[cols].kurtosis()
     return result.to_dict()
-
 
 def group_by_stats(
     df: pd.DataFrame,
@@ -36,7 +34,6 @@ def correlation_matrix(df: pd.DataFrame, columns: Optional[list[str]] = None) ->
         raise ValueError("Need at least 2 numeric columns for correlation")
     return df[cols].corr().to_dict()
 
-
 def value_counts(
     df: pd.DataFrame,
     column: str,
@@ -48,7 +45,6 @@ def value_counts(
     counts = df[column].value_counts(normalize=normalize).head(limit)
     return counts.to_dict()
 
-
 def missing_values_summary(df: pd.DataFrame) -> list[dict]:
     missing = df.isnull().sum()
     pct = (missing / len(df) * 100).round(2)
@@ -58,7 +54,6 @@ def missing_values_summary(df: pd.DataFrame) -> list[dict]:
         .sort_values("missing", ascending=False)
         .to_dict(orient="records")
     )
-
 
 def outliers_summary(
     df: pd.DataFrame,

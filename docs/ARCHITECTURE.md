@@ -1,6 +1,6 @@
 # Architecture
 
-System design and data flow documentation for DataLens AI.
+System design and data flow documentation for DataLens.
 
 ## High-Level Architecture
 
