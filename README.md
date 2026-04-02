@@ -4,36 +4,27 @@ An autonomous data analysis platform powered by a LangChain ReAct agent and Goog
 
 ## Architecture
 
+
 ```
-backend/
-  main.py              FastAPI application entry point
-  config.py            Settings loaded from .env via pydantic-settings
-  session.py           Async database session store with Redis caching
-  schemas.py           Pydantic request / response / tool-input models
-  streaming.py         WebSocket streaming callback for LangChain events
-  db/                  PostgreSQL + Redis/Upstash integration
-    models.py          SQLAlchemy models (Message, ToolRun, Chart, Session)
-    database.py        Async engine and session management
-  agent/
-    analyst_agent.py   ReAct agent construction (Gemini LLM + tools + prompt)
-    output_parser.py   Structured output parsing for answers and charts
-  routes/
-    upload.py          POST /upload, GET|DELETE /sessions/{session_id}
-    chat.py            POST /chat/{session_id}, WS /ws/{session_id}, message/chart history
-  tools/
-    guards.py          Shared session guard utility
-    dataset_tools.py   describe_dataset, generate_chart_spec
-    statistical_tools.py  descriptive_stats, group_by_stats, correlation_matrix, value_counts, outliers_summary
-    ml_tools.py        run_pca, run_kmeans, detect_anomalies, run_regression, run_classification
-    time_series_tools.py  check_stationarity, run_forecast, decompose_time_series
-  analyzers/
-    statistical.py     Core statistical computation functions
-    ml.py              PCA, clustering, regression, classification, anomaly detection
-    time_series/       Preprocessing, decomposition, stationarity, forecasting
-  tasks/
-    cleanup.py         Expired session cleanup job
-frontend/              Next.js 14 + React + TypeScript application
-```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   Frontend      │     │    Backend      │     │   External      │
+│   (Next.js)     │◄───►│   (FastAPI)     │◄───►│   Services      │
+│                 │     │                 │     │                 │
+│ - React UI      │     │ - ReAct Agent   │     │ - Google Gemini │
+│ - Vega-Lite     │     │ - Tool Registry │     │ - PostgreSQL    │
+│ - WebSocket     │     │ - File Parser   │     │ - Redis         │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+         │                       │
+         │                       │
+         ▼                       ▼
+┌─────────────────┐     ┌─────────────────┐
+│  User Browser   │     │   Database      │
+│                 │     │                 │
+│ - Upload files  │     │ - Messages      │
+│ - View charts   │     │ - Sessions      │
+│ - Chat UI       │     │ - Charts        │
+└─────────────────┘     │ - Tool Runs     │
+                        └─────────────────┘
 
 ## Requirements
 
