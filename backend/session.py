@@ -1,5 +1,6 @@
 import json
 import io
+import base64
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -48,11 +49,13 @@ async def _store_df_in_redis(session_id: str, df: pd.DataFrame) -> None:
     try:
         buf = io.BytesIO()
         df.to_parquet(buf, index=False)
+        # Encode bytes to base64 string for Upstash Redis REST compatibility
+        encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
         redis = await get_redis()
         await redis.client.setex(
             f"df:{session_id}",
             settings.session_ttl_seconds,
-            buf.getvalue(),
+            encoded,
         )
     except Exception as e:
         logger.warning(f"Failed to store DataFrame in Redis (session {session_id}): {e}")
@@ -63,9 +66,11 @@ async def _load_df_from_redis(session_id: str) -> Optional[pd.DataFrame]:
     try:
         redis = await get_redis()
         data = await redis.client.get(f"df:{session_id}")
-        if data is None:
+        if not data:
             return None
-        return pd.read_parquet(io.BytesIO(data))
+        # Decode base64 string back to parquet bytes
+        decoded = base64.b64decode(data)
+        return pd.read_parquet(io.BytesIO(decoded))
     except Exception as e:
         logger.warning(f"Failed to load DataFrame from Redis (session {session_id}): {e}")
         return None

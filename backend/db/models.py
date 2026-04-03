@@ -10,7 +10,7 @@ class Session(Base):
 
     session_id = Column(String(64), primary_key=True)
     filename = Column(String(512), nullable=False)
-    file_path = Column(String(1024), nullable=False)
+    file_path = Column(String(1024), nullable=True)
     schema = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
