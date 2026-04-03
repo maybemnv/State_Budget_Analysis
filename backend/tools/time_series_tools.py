@@ -8,7 +8,7 @@ from .guards import require_df
 
 
 @tool("check_stationarity", args_schema=StationarityInput)
-def check_stationarity(
+async def check_stationarity(
     session_id: Optional[str] = None,
     date_column: Optional[str] = None,
     value_column: Optional[str] = None,
@@ -17,7 +17,7 @@ def check_stationarity(
     if not date_column or not value_column:
         return {"error": "date_column and value_column are both required"}
 
-    df, err = require_df(session_id)
+    df, err = await require_df(session_id)
     if err:
         return err
     try:
@@ -28,7 +28,7 @@ def check_stationarity(
 
 
 @tool("run_forecast", args_schema=ForecastInput)
-def run_forecast(
+async def run_forecast(
     session_id: Optional[str] = None,
     date_column: Optional[str] = None,
     value_column: Optional[str] = None,
@@ -39,7 +39,7 @@ def run_forecast(
     if not date_column or not value_column:
         return {"error": "date_column and value_column are both required"}
 
-    df, err = require_df(session_id)
+    df, err = await require_df(session_id)
     if err:
         return err
     try:
@@ -54,7 +54,7 @@ def run_forecast(
 
 
 @tool("decompose_time_series", args_schema=TimeSeriesInput)
-def decompose_time_series(
+async def decompose_time_series(
     session_id: Optional[str] = None,
     date_column: Optional[str] = None,
     value_column: Optional[str] = None,
@@ -63,7 +63,7 @@ def decompose_time_series(
     if not date_column or not value_column:
         return {"error": "date_column and value_column are both required"}
 
-    df, err = require_df(session_id)
+    df, err = await require_df(session_id)
     if err:
         return err
     try:

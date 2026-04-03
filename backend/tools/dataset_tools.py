@@ -1,35 +1,42 @@
 from langchain_core.tools import tool
 from ..schemas import DescribeDatasetInput, GenerateChartSpecInput
 from ..session import get_df, get_session
+from ..db.database import get_db
 from ..analyzers.statistical import missing_values_summary
 from .guards import require_df
 from typing import Optional
 
 
 @tool("describe_dataset", args_schema=DescribeDatasetInput)
-def describe_dataset(session_id: Optional[str] = None) -> dict:
+async def describe_dataset(session_id: Optional[str] = None) -> dict:
     """Always call this first. Returns schema, dtypes, null counts, sample rows, and column summary."""
-    session = get_session(session_id)
+    async with get_db() as db:
+        session = await get_session(session_id, db)
+    
     if session is None:
         return {"error": f"Session {session_id!r} not found"}
-    df = session["df"]
-    meta = session["metadata"]
+    
+    # Reload DF from Redis/Memory using dedicated helper
+    df, err = await require_df(session_id, db)
+    if err:
+        return err
+
     return {
-        "filename": meta["filename"],
-        "shape": meta["shape"],
-        "columns": meta["columns"],
-        "numeric_columns": meta["numeric_columns"],
-        "categorical_columns": meta["categorical_columns"],
-        "dtypes": meta["dtypes"],
-        "missing_values_total": meta["missing_values"],
+        "filename": session["filename"],
+        "shape": session["schema"]["shape"],
+        "columns": session["schema"]["columns"],
+        "numeric_columns": session["schema"]["numeric_columns"],
+        "categorical_columns": session["schema"]["categorical_columns"],
+        "dtypes": session["schema"]["dtypes"],
+        "missing_values_total": session["schema"]["missing_values"],
         "missing_by_column": missing_values_summary(df),
         "sample": df.head(5).to_dict(orient="records"),
-        "numeric_summary": df.describe().round(4).to_dict() if meta["numeric_columns"] else {},
+        "numeric_summary": df.describe().round(4).to_dict() if session["schema"]["numeric_columns"] else {},
     }
 
 
 @tool("generate_chart_spec", args_schema=GenerateChartSpecInput)
-def generate_chart_spec(
+async def generate_chart_spec(
     session_id: str,
     chart_type: Optional[str] = None,
     x_column: Optional[str] = None,
@@ -41,7 +48,7 @@ def generate_chart_spec(
     if not chart_type:
         return {"error": "chart_type is required. Choose from: scatter, line, bar, histogram, box"}
 
-    df, err = require_df(session_id)
+    df, err = await require_df(session_id)
     if err:
         return err
 
