@@ -9,7 +9,7 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain.agents.agent import ExceptionTool
 from langchain_core.exceptions import OutputParserException
@@ -73,9 +73,9 @@ Thought: {agent_scratchpad}\
 
 
 def _build_executor(session_id: str) -> AgentExecutor:
-    llm = ChatGoogleGenerativeAI(
+    llm = ChatGroq(
         model=settings.model_name,
-        google_api_key=settings.gemini_api_key,
+        groq_api_key=settings.groq_api_key,
         streaming=True,
         temperature=0,
     )

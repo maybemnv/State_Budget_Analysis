@@ -7,8 +7,8 @@ import os
 
 
 class Settings(BaseSettings):
-    gemini_api_key: str = Field(validation_alias="GEMINI_API_KEY")
-    model_name: str = Field(default="gemini-2.5-flash")
+    groq_api_key: str = Field(validation_alias="GROQ_API_KEY")
+    model_name: str = Field(default="qwen/qwen3-32b")
 
     # API Configuration
     db_host: str = Field(default="127.0.0.1", validation_alias="DB_HOST")
@@ -74,13 +74,11 @@ class Settings(BaseSettings):
         validate_assignment=True
     )
     
-    @field_validator("gemini_api_key")
+    @field_validator("groq_api_key")
     @classmethod
-    def validate_gemini_api_key(cls, v: str) -> str:
+    def validate_groq_api_key(cls, v: str) -> str:
         if not v or v.strip() == "":
-            raise ValueError("GEMINI_API_KEY must be set in environment variables")
-        if v.strip() == "your_google_gemini_api_key_here":
-            raise ValueError("GEMINI_API_KEY must be set to your actual API key")
+            raise ValueError("GROQ_API_KEY must be set in environment variables")
         return v.strip()
     @field_validator("db_user", "db_password")
     @classmethod

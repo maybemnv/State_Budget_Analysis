@@ -1,7 +1,13 @@
 // API client for DataLens backend
 // Base URLs - configure via environment variables
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000'
+// Base URLs - configure via environment variables or detect from window.location
+const getOrigin = () => {
+  if (typeof window === 'undefined') return 'http://localhost:8000'
+  return `${window.location.protocol}//${window.location.hostname}:8000`
+}
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || getOrigin()
+const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || getOrigin().replace('http', 'ws')
 
 // Types
 export interface UploadResponse {
@@ -179,7 +185,11 @@ export function createWebSocketClient({
   }
 
   ws.onerror = (error) => {
-    console.error('WebSocket error:', error)
+    console.error('WebSocket error:', {
+      readyState: ws.readyState,
+      url: ws.url,
+      error
+    })
     // Don't call onError here - it will be called by onclose with proper info
   }
 
