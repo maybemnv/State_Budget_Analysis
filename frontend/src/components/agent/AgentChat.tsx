@@ -54,7 +54,7 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange, onTimeli
       onTimelineStep?.({ label: "thinking", timestamp: now() })
       setMessages((prev) => [
         ...prev,
-        { id: `thought-${Date.now()}`, type: "thought", content, timestamp: new Date() },
+        { id: `thought-${Date.now()}-${Math.random().toString(36).slice(2)}`, type: "thought", content, timestamp: new Date() },
       ])
     },
     onToolCall: (tool, args) => {
@@ -62,7 +62,7 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange, onTimeli
       onTimelineStep?.({ label: tool, timestamp: now() })
       setMessages((prev) => [
         ...prev,
-        { id: `tool-${Date.now()}`, type: "tool_call", tool, args, content: "", timestamp: new Date() },
+        { id: `tool-${Date.now()}-${Math.random().toString(36).slice(2)}`, type: "tool_call", tool, args, content: "", timestamp: new Date() },
       ])
     },
     onToolResult: (tool, result) => {
@@ -80,7 +80,7 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange, onTimeli
       onTimelineStep?.({ label: "answer", timestamp: now() })
       setMessages((prev) => [
         ...prev,
-        { id: `answer-${Date.now()}`, type: "answer", content, timestamp: new Date() },
+        { id: `answer-${Date.now()}-${Math.random().toString(36).slice(2)}`, type: "answer", content, timestamp: new Date() },
       ])
       setTimeout(() => handleAgentStateChange("idle"), 2000)
     },
@@ -92,7 +92,7 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange, onTimeli
       handleAgentStateChange("error")
       setMessages((prev) => [
         ...prev,
-        { id: `error-${Date.now()}`, type: "error", content: message, timestamp: new Date() },
+        { id: `error-${Date.now()}-${Math.random().toString(36).slice(2)}`, type: "error", content: message, timestamp: new Date() },
       ])
       setTimeout(() => handleAgentStateChange("idle"), 2000)
     },
@@ -114,7 +114,7 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange, onTimeli
     setMessages((prev) => [
       ...prev,
       {
-        id: `user-${Date.now()}`,
+        id: `user-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         type: "user",
         content: input,
         timestamp: new Date(),
