@@ -14,6 +14,7 @@ from ..agent.analyst_agent import run_agent
 from ..agent.output_parser import parse_output
 from ..streaming import WebSocketStreamingCallback
 from ..schemas import ChatRequest, ChatResponse
+from ..utils.json_utils import sanitize_for_json
 
 
 logger = logging.getLogger(__name__)
@@ -40,8 +41,8 @@ async def save_message(
         role=role,
         content=content,
         tool_name=tool_name,
-        tool_input=tool_input,
-        tool_result=tool_result,
+        tool_input=sanitize_for_json(tool_input) if isinstance(tool_input, dict) else tool_input,
+        tool_result=sanitize_for_json(tool_result) if isinstance(tool_result, dict) else tool_result,
     )
     db.add(message)
     await db.commit()
@@ -61,8 +62,8 @@ async def save_tool_run(
     tool_run = ToolRun(
         session_id=session_id,
         tool_name=tool_name,
-        input_json=tool_input,
-        result_json=tool_result,
+        input_json=sanitize_for_json(tool_input),
+        result_json=sanitize_for_json(tool_result),
         duration_ms=duration_ms,
     )
     db.add(tool_run)
@@ -82,7 +83,7 @@ async def save_chart(
     chart = Chart(
         session_id=session_id,
         chart_type=chart_type,
-        vega_spec=vega_spec,
+        vega_spec=sanitize_for_json(vega_spec),
         query=query,
     )
     db.add(chart)
