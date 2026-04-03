@@ -2,13 +2,14 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 from typing import ClassVar, Literal
+from urllib.parse import quote_plus
 import os
 
 
 class Settings(BaseSettings):
     gemini_api_key: str = Field(validation_alias="GEMINI_API_KEY")
     model_name: str = Field(default="gemini-2.5-flash")
-    
+
     # API Configuration
     db_host: str = Field(default="127.0.0.1", validation_alias="DB_HOST")
     db_port: int = Field(default=5432, validation_alias="DB_PORT")
@@ -16,10 +17,12 @@ class Settings(BaseSettings):
     db_password: str = Field(validation_alias="DB_PASSWORD")
     db_name: str = Field(default="datalens", validation_alias="DB_NAME")
     db_driver: str = Field(default="postgresql+asyncpg")
-    
+
     @property
     def database_url(self) -> str:
-        return f"{self.db_driver}://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+        # URL-encode password to handle special characters like @, :, etc.
+        encoded_password = quote_plus(self.db_password)
+        return f"{self.db_driver}://{self.db_user}:{encoded_password}@{self.db_host}:{self.db_port}/{self.db_name}"
     
     # Database Configuration
     upstash_redis_rest_url: str = Field(default="", validation_alias="UPSTASH_REDIS_REST_URL")
