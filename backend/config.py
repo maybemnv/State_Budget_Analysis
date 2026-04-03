@@ -35,16 +35,20 @@ class Settings(BaseSettings):
     
     @property
     def active_redis_config(self) -> dict:
-        """Get the active Redis configuration."""
+        """Get the active Redis configuration.
+        
+        Note: Returns config references only, not actual credentials.
+        Use settings directly when initializing Redis client.
+        """
         if self.is_upstash_redis:
             return {
                 "type": "upstash",
-                "url": self.upstash_redis_rest_url,
-                "token": self.upstash_redis_rest_token
+                "configured": True
             }
         return {
             "type": "standard",
-            "url": self.redis_url
+            "url": self.redis_url,
+            "configured": bool(self.redis_url and self.redis_url != "redis://127.0.0.1:6379/0")
         }
     
     # Application Configuration
@@ -75,6 +79,8 @@ class Settings(BaseSettings):
     def validate_gemini_api_key(cls, v: str) -> str:
         if not v or v.strip() == "":
             raise ValueError("GEMINI_API_KEY must be set in environment variables")
+        if v.strip() == "your_google_gemini_api_key_here":
+            raise ValueError("GEMINI_API_KEY must be set to your actual API key")
         return v.strip()
     @field_validator("db_user", "db_password")
     @classmethod
@@ -82,6 +88,17 @@ class Settings(BaseSettings):
         if not v or v.strip() == "":
             raise ValueError("Database credentials (DB_USER, DB_PASSWORD) must be set in environment variables")
         return v.strip()
+
+    @field_validator("upstash_redis_rest_url", "upstash_redis_rest_token", mode="before")
+    @classmethod
+    def validate_redis_credentials(cls, v: str) -> str:
+        """Validate Redis credentials are not placeholder values."""
+        if v and isinstance(v, str):
+            v = v.strip()
+            # Check for placeholder values
+            if v in ["your_upstash_token_here", "your_upstash_url_here", ""]:
+                return ""  # Return empty to allow fallback to standard Redis
+        return v
     
     @field_validator("max_upload_mb")
     @classmethod
@@ -119,23 +136,63 @@ class Settings(BaseSettings):
         }
     
     def get_redis_info(self) -> dict:
+        """Get Redis configuration info (without exposing credentials)."""
         if self.is_upstash_redis:
+            # Mask the URL to avoid exposing the token
+            masked_url = self._mask_url(self.upstash_redis_rest_url)
             return {
                 "type": "upstash",
-                "url": self.upstash_redis_rest_url,
+                "url": masked_url,
                 "configured": True
             }
         return {
             "type": "standard",
-            "url": self.redis_url,
-            "configured": bool(self.redis_url != "redis://127.0.0.1:6379/0")
+            "url": self._mask_url(self.redis_url),
+            "configured": bool(self.redis_url and self.redis_url != "redis://127.0.0.1:6379/0")
         }
+
+    @staticmethod
+    def _mask_url(url: str) -> str:
+        """Mask sensitive parts of URL (passwords, tokens)."""
+        if not url:
+            return "not configured"
+        try:
+            from urllib.parse import urlparse, urlunparse
+            parsed = urlparse(url)
+            # Mask password/token if present
+            if parsed.password:
+                parsed = parsed._replace(
+                    netloc=f"{parsed.username}:****@{parsed.hostname}:{parsed.port}"
+                )
+            return urlunparse(parsed)
+        except Exception:
+            # If parsing fails, just return first 30 chars
+            return url[:30] + "..." if len(url) > 30 else url
     
     def is_production(self) -> bool:
         return self.environment == "production"
-    
+
     def is_development(self) -> bool:
         return self.environment == "development"
+
+    def get_safe_config_summary(self) -> dict:
+        """Get a summary of configuration without exposing secrets."""
+        return {
+            "environment": self.environment,
+            "debug": self.debug,
+            "model": self.model_name,
+            "database": {
+                "host": self.db_host,
+                "port": self.db_port,
+                "user": self.db_user[:3] + "***" if len(self.db_user) > 3 else "***",
+                "database": self.db_name,
+                "driver": self.db_driver
+            },
+            "redis": self.get_redis_info(),
+            "cors_origins": self.cors_origins,
+            "max_upload_mb": self.max_upload_mb,
+            "session_ttl_seconds": self.session_ttl_seconds
+        }
 
 
 settings = Settings()
