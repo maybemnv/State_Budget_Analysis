@@ -1,7 +1,8 @@
 import json
 from typing import Any
 from langchain_core.callbacks import AsyncCallbackHandler
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
+from .utils.json_utils import sanitize_for_json
 
 
 class WebSocketStreamingCallback(AsyncCallbackHandler):
@@ -22,7 +23,15 @@ class WebSocketStreamingCallback(AsyncCallbackHandler):
         self._current_tool: str | None = None
 
     async def _send(self, payload: dict[str, Any]) -> None:
-        await self.ws.send_text(json.dumps(payload))
+        try:
+            sanitized = sanitize_for_json(payload)
+            await self.ws.send_text(json.dumps(sanitized))
+        except (WebSocketDisconnect, RuntimeError):
+            # Connection closed or error occurred - ignore quietly
+            pass
+        except Exception:
+            # Connection likely closed, ignore to prevent callback spam
+            pass
 
     async def on_llm_start(self, serialized: dict, prompts: list[str], **kwargs: Any) -> None:
         """Called when LLM starts generating - we accumulate thought content."""
