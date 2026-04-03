@@ -3,15 +3,15 @@ from __future__ import annotations
 import asyncio
 import logging
 
+import groq
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
 from langchain_groq import ChatGroq
 from langchain.agents import AgentExecutor, create_react_agent
-from langchain.agents.agent import ExceptionTool
 from langchain_core.exceptions import OutputParserException
 from langchain_core.prompts import PromptTemplate
 
@@ -20,6 +20,9 @@ from ..tools import ALL_TOOLS
 
 
 logger = logging.getLogger(__name__)
+
+AGENT_TIMEOUT_SECONDS = 120
+MAX_TOOL_OUTPUT_CHARS = 4000
 
 _TOOL_GUIDE = """\
 Tool selection guide — use the FIRST matching rule:
@@ -72,12 +75,35 @@ Thought: {agent_scratchpad}\
 """
 
 
+def _is_token_limit_error(exc: BaseException) -> bool:
+    if isinstance(exc, groq.APIStatusError) and exc.status_code == 413:
+        return True
+    if isinstance(exc, groq.RateLimitError):
+        msg = str(exc).lower()
+        if "request too large" in msg or "413" in msg:
+            return True
+    return False
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    if _is_token_limit_error(exc):
+        return False
+    if isinstance(exc, OutputParserException):
+        return True
+    if isinstance(exc, groq.RateLimitError):
+        return True
+    if isinstance(exc, groq.APIConnectionError):
+        return True
+    return False
+
+
 def _build_executor(session_id: str) -> AgentExecutor:
     llm = ChatGroq(
         model=settings.model_name,
         groq_api_key=settings.groq_api_key,
         streaming=True,
         temperature=0,
+        max_retries=1,
     )
     prompt = PromptTemplate(
         template=_SYSTEM_PROMPT,
@@ -97,7 +123,7 @@ def _build_executor(session_id: str) -> AgentExecutor:
 
 
 @retry(
-    retry=retry_if_exception_type(OutputParserException),
+    retry=retry_if_exception(_is_retryable),
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=1, max=8),
     reraise=True,
@@ -108,36 +134,69 @@ async def _invoke(executor: AgentExecutor, payload: dict, callback=None) -> dict
 
 
 async def run_agent(session_id: str, message: str, context: str = "", callback=None) -> dict:
-    """Build and invoke the agent, returning the raw LangChain result dict.
-
-    Retries up to 3 times on OutputParserException with exponential back-off.
-    Returns an error dict on final failure instead of raising.
-    """
-    logger.info(
-        f"Agent run started: session_id={session_id}, message={message[:50]}..."
-    )
+    logger.info(f"Agent run started: session_id={session_id}, message={message[:50]}...")
 
     executor = _build_executor(session_id)
-    
+
     input_text = message
     if context:
         input_text = f"Previous conversation summary:\n{context}\n\nCurrent question: {message}"
-    
+
     try:
-        result = await _invoke(executor, {"input": input_text}, callback=callback)
+        result = await asyncio.wait_for(
+            _invoke(executor, {"input": input_text}, callback=callback),
+            timeout=AGENT_TIMEOUT_SECONDS,
+        )
         logger.info(
-            f"Agent run completed: session_id={session_id}, steps={len(result.get('intermediate_steps', []))}"
+            f"Agent run completed: session_id={session_id}, "
+            f"steps={len(result.get('intermediate_steps', []))}"
         )
         return result
+
+    except asyncio.TimeoutError:
+        logger.error(f"Agent timed out after {AGENT_TIMEOUT_SECONDS}s: session_id={session_id}")
+        return {
+            "output": f"Analysis timed out after {AGENT_TIMEOUT_SECONDS} seconds. Try a simpler query or smaller dataset.",
+            "intermediate_steps": [],
+        }
+
+    except groq.APIStatusError as e:
+        if e.status_code == 413:
+            logger.error(f"Token limit exceeded: session_id={session_id}, tokens requested by prompt too large")
+            return {
+                "output": (
+                    "Request exceeds the model's token limit. "
+                    "Try a more specific question or upload a smaller dataset."
+                ),
+                "intermediate_steps": [],
+            }
+        logger.exception(f"Groq API error (HTTP {e.status_code}): session_id={session_id}")
+        return {"output": f"API error (HTTP {e.status_code}): {e}", "intermediate_steps": []}
+
+    except groq.RateLimitError as e:
+        if _is_token_limit_error(e):
+            logger.error(f"Token limit exceeded (rate_limit): session_id={session_id}")
+            return {
+                "output": (
+                    "Request exceeds the model's token limit. "
+                    "Try a more specific question or upload a smaller dataset."
+                ),
+                "intermediate_steps": [],
+            }
+        logger.error(f"Rate limited: session_id={session_id}")
+        return {"output": "Rate limited by the API. Please wait a moment and try again.", "intermediate_steps": []}
+
+    except groq.APIConnectionError:
+        logger.error(f"Connection to Groq API failed: session_id={session_id}")
+        return {"output": "Could not connect to the AI service. Please try again.", "intermediate_steps": []}
+
     except OutputParserException as e:
         logger.error(f"Agent parse error: session_id={session_id}, error={e}")
         return {
             "output": f"The agent failed to produce a valid response. Details: {e}",
             "intermediate_steps": [],
         }
+
     except Exception as e:
         logger.exception(f"Agent runtime error: session_id={session_id}, error={e}")
-        return {
-            "output": f"An unexpected error occurred: {e}",
-            "intermediate_steps": [],
-        }
+        return {"output": f"An unexpected error occurred: {e}", "intermediate_steps": []}

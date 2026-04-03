@@ -6,20 +6,38 @@ from ..analyzers.statistical import missing_values_summary
 from .guards import require_df
 from typing import Optional
 
+MAX_SAMPLE_ROWS = 3
+MAX_CHART_DATA_ROWS = 2000
+
 
 @tool("describe_dataset", args_schema=DescribeDatasetInput)
 async def describe_dataset(session_id: Optional[str] = None) -> dict:
     """Always call this first. Returns schema, dtypes, null counts, sample rows, and column summary."""
     async with get_db() as db:
         session = await get_session(session_id, db)
-    
+
     if session is None:
         return {"error": f"Session {session_id!r} not found"}
-    
-    # Reload DF from Redis/Memory using dedicated helper
+
     df, err = await require_df(session_id, db)
     if err:
         return err
+
+    num_summary = {}
+    for col in session["schema"]["numeric_columns"]:
+        if col not in df.columns:
+            continue
+        s = df[col].describe()
+        num_summary[col] = {
+            "count": int(s["count"]),
+            "mean": round(float(s["mean"]), 2),
+            "std": round(float(s["std"]), 2),
+            "min": round(float(s["min"]), 2),
+            "max": round(float(s["max"]), 2),
+        }
+
+    missing = missing_values_summary(df)
+    non_zero_missing = {k: v for k, v in missing.items() if v > 0}
 
     return {
         "filename": session["filename"],
@@ -29,9 +47,9 @@ async def describe_dataset(session_id: Optional[str] = None) -> dict:
         "categorical_columns": session["schema"]["categorical_columns"],
         "dtypes": session["schema"]["dtypes"],
         "missing_values_total": session["schema"]["missing_values"],
-        "missing_by_column": missing_values_summary(df),
-        "sample": df.head(5).to_dict(orient="records"),
-        "numeric_summary": df.describe().round(4).to_dict() if session["schema"]["numeric_columns"] else {},
+        "missing_by_column": non_zero_missing,
+        "sample": df.head(MAX_SAMPLE_ROWS).to_dict(orient="records"),
+        "numeric_summary": num_summary,
     }
 
 
@@ -91,7 +109,7 @@ async def generate_chart_spec(
             "title": title or f"{chart_type.capitalize()}: {x_column or ''}/{y_column or ''}",
             "mark": mark_map.get(chart_type, "point"),
             "encoding": enc,
-            "data": {"values": df[data_cols].head(2000).to_dict(orient="records")},
+            "data": {"values": df[data_cols].head(MAX_CHART_DATA_ROWS).to_dict(orient="records")},
         },
         "chart_type": chart_type,
     }

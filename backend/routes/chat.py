@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import time
@@ -20,6 +21,29 @@ from ..utils.json_utils import sanitize_for_json
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["chat"])
+
+KEEPALIVE_INTERVAL_SECONDS = 20
+
+
+async def _keepalive(ws: WebSocket, interval: float = KEEPALIVE_INTERVAL_SECONDS) -> None:
+    try:
+        while True:
+            await asyncio.sleep(interval)
+            await ws.send_text(json.dumps({"type": "ping"}))
+    except (WebSocketDisconnect, RuntimeError, Exception):
+        pass
+
+
+async def _run_with_keepalive(ws: WebSocket, coro):
+    task = asyncio.create_task(_keepalive(ws))
+    try:
+        return await coro
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 LLM_CONTEXT_MESSAGES = 10
 
@@ -152,7 +176,10 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                 await save_message(session_id, "user", message, db=db)
 
                 start_time = time.time()
-                result = await run_agent(session_id, message, context=summary, callback=callback)
+                result = await _run_with_keepalive(
+                    websocket,
+                    run_agent(session_id, message, context=summary, callback=callback),
+                )
                 duration_ms = int((time.time() - start_time) * 1000)
 
                 parsed = parse_output(result.get("output", ""))

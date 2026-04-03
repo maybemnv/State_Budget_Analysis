@@ -125,7 +125,7 @@ export const api = {
 
 // WebSocket client
 export interface WSMessage {
-  type: 'thought' | 'tool_call' | 'tool_result' | 'chart' | 'answer' | 'error' | 'done'
+  type: 'thought' | 'tool_call' | 'tool_result' | 'chart' | 'answer' | 'error' | 'done' | 'ping'
   content?: string
   tool?: string
   args?: Record<string, unknown>
@@ -221,6 +221,8 @@ export function createWebSocketClient({
           break
         case 'done':
           onDone?.()
+          break
+        case 'ping':
           break
       }
     } catch (e) {
