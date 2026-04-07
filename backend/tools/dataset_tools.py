@@ -1,4 +1,5 @@
 from langchain_core.tools import tool
+import pandas as pd
 from ..schemas import DescribeDatasetInput, GenerateChartSpecInput
 from ..session import get_df, get_session
 from ..db.database import get_db
@@ -28,16 +29,19 @@ async def describe_dataset(session_id: Optional[str] = None) -> dict:
         if col not in df.columns:
             continue
         s = df[col].describe()
+        # Handle all-NaN case where describe() returns empty or NaN
+        if len(s) == 0 or pd.isna(s.get("count", 0)):
+            continue
         num_summary[col] = {
             "count": int(s["count"]),
-            "mean": round(float(s["mean"]), 2),
-            "std": round(float(s["std"]), 2),
-            "min": round(float(s["min"]), 2),
-            "max": round(float(s["max"]), 2),
+            "mean": round(float(s.get("mean", 0)), 2),
+            "std": round(float(s.get("std", 0)), 2),
+            "min": round(float(s.get("min", 0)), 2),
+            "max": round(float(s.get("max", 0)), 2),
         }
 
     missing = missing_values_summary(df)
-    non_zero_missing = {k: v for k, v in missing.items() if v > 0}
+    non_zero_missing = {item["column"]: item["missing"] for item in missing}
 
     return {
         "filename": session["filename"],
@@ -70,7 +74,7 @@ async def generate_chart_spec(
     if err:
         return err
 
-    for col in (x_column, y_column):
+    for col in (x_column, y_column, color_column):
         if col and col not in df.columns:
             return {"error": f"Column not found: {col!r}"}
 
