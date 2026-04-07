@@ -3,140 +3,124 @@
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Button } from "@/components/ui/button"
 import { Scene3D } from "@/components/viz/Scene3D"
 import { PCAScatter3D } from "@/components/viz/PCAScatter3D"
-import { Maximize2, ImageDown, BarChart3, ScatterChart, Minimize2, Wifi, WifiOff } from "lucide-react"
-import { BackendStatusIndicator } from "@/components/ui/BackendStatusIndicator"
+import { Maximize2, Minimize2, ImageDown, BarChart3, ScatterChart, Wifi, WifiOff } from "lucide-react"
 import type { VegaLiteSpec } from "@/lib/types"
 
 interface VizPanelProps {
   chartSpec?: VegaLiteSpec | null
   isConnected?: boolean
-  className?: string
 }
 
-/**
- * VizPanel — Right panel showing visualizations.
- * Supports 3D scenes (PCA, clusters) and 2D charts (Recharts).
- */
-export function VizPanel({ chartSpec, isConnected = false, className }: VizPanelProps) {
-  const [activeTab, setActiveTab] = useState<"3d" | "2d">("3d")
-  const [isFullscreen, setIsFullscreen] = useState(false)
+const DEMO_POINTS = Array.from({ length: 50 }, () => ({
+  x: (Math.random() - 0.5) * 2,
+  y: (Math.random() - 0.5) * 2,
+  z: (Math.random() - 0.5) * 2,
+  group: Math.floor(Math.random() * 3),
+}))
 
-  // Demo data for PCA visualization (replace with real data from backend)
-  const demoPoints = Array.from({ length: 50 }, (_, i) => ({
-    x: (Math.random() - 0.5) * 2,
-    y: (Math.random() - 0.5) * 2,
-    z: (Math.random() - 0.5) * 2,
-    group: Math.floor(Math.random() * 3),
-  }))
+const TABS = ["PCA", "Clusters", "Forecast"] as const
+
+export function VizPanel({ chartSpec, isConnected = false }: VizPanelProps) {
+  const [view, setView] = useState<"3d" | "2d">("3d")
+  const [fullscreen, setFullscreen] = useState(false)
+  const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("PCA")
 
   return (
     <div
       className={cn(
-        "flex flex-col border-l border-border bg-background transition-all",
-        isFullscreen ? "fixed inset-0 z-50" : "h-full",
-        className
+        "flex flex-col",
+        fullscreen ? "fixed inset-0 z-50 bg-elevated" : "h-full"
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+      <div className="flex items-center justify-between px-4 py-2.5">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-medium text-text-primary">VIZ</h2>
-          <div className={cn(
-            "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
-            isConnected
-              ? "bg-success/10 text-success"
-              : "bg-border text-text-muted"
-          )}>
+          <span className="text-xs font-semibold uppercase tracking-widest text-text-muted">VIZ</span>
+          <span
+            className={cn(
+              "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+              isConnected ? "bg-success/10 text-success" : "bg-elevated text-text-disabled"
+            )}
+          >
             {isConnected ? <Wifi className="h-2.5 w-2.5" /> : <WifiOff className="h-2.5 w-2.5" />}
-            {isConnected ? "Active" : "Standby"}
-          </div>
+            {isConnected ? "Live" : "Standby"}
+          </span>
         </div>
-        <div className="flex gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn("h-7 w-7", activeTab === "3d" ? "bg-surface text-text-primary" : "text-text-muted")}
-            onClick={() => setActiveTab("3d")}
-            title="3D View"
-          >
-            <ScatterChart className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn("h-7 w-7", activeTab === "2d" ? "bg-surface text-text-primary" : "text-text-muted")}
-            onClick={() => setActiveTab("2d")}
-            title="2D Charts"
-          >
-            <BarChart3 className="h-3.5 w-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-text-muted" title="Export">
+
+        <div className="flex items-center gap-0.5">
+          {[
+            { icon: ScatterChart, id: "3d" as const, title: "3D" },
+            { icon: BarChart3, id: "2d" as const, title: "2D" },
+          ].map(({ icon: Icon, id, title }) => (
+            <button
+              key={id}
+              onClick={() => setView(id)}
+              title={title}
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded transition-colors",
+                view === id ? "bg-elevated text-text-primary" : "text-text-muted hover:text-text-secondary"
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" />
+            </button>
+          ))}
+          <button title="Export" className="flex h-7 w-7 items-center justify-center rounded text-text-muted transition-colors hover:text-text-secondary">
             <ImageDown className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-text-muted"
-            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-            onClick={() => setIsFullscreen((f) => !f)}
+          </button>
+          <button
+            title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+            onClick={() => setFullscreen((f) => !f)}
+            className="flex h-7 w-7 items-center justify-center rounded text-text-muted transition-colors hover:text-text-secondary"
           >
-            {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-          </Button>
+            {fullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+          </button>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-hidden">
-        {activeTab === "3d" ? (
+      {/* Canvas */}
+      <div className="flex-1 overflow-hidden border-t border-border">
+        {view === "3d" ? (
           <Scene3D showControls={false}>
-            <PCAScatter3D points={demoPoints} pointSize={0.12} />
+            <PCAScatter3D points={DEMO_POINTS} pointSize={0.12} />
           </Scene3D>
         ) : (
           <ScrollArea className="h-full p-4">
             {chartSpec ? (
-              <div className="space-y-4">
-                <div className="rounded-lg border border-border bg-surface/50 p-4">
-                  <h3 className="mb-2 text-sm font-medium text-text-primary">
-                    {chartSpec.title?.toString() || "Chart"}
-                  </h3>
-                  <div className="text-xs text-text-muted">
-                    Chart spec received from agent
-                  </div>
-                </div>
+              <div className="rounded border border-border bg-surface p-4">
+                <p className="mb-1 text-sm font-semibold text-text-primary">
+                  {chartSpec.title?.toString() ?? "Chart"}
+                </p>
+                <p className="text-xs text-text-muted">Chart spec received from agent</p>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <BarChart3 className="mb-4 h-12 w-12 text-agent/50" />
-                <h3 className="mb-2 text-lg font-medium text-text-primary">No chart yet</h3>
-                <p className="text-sm text-text-muted">
-                  Ask the agent to create a visualization
-                </p>
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <BarChart3 className="mb-3 h-10 w-10 text-text-disabled" />
+                <p className="text-sm font-medium text-text-secondary">No chart yet</p>
+                <p className="mt-1 text-xs text-text-muted">Ask the agent to create a visualization</p>
               </div>
             )}
           </ScrollArea>
         )}
       </div>
 
-      {/* Chart history tabs */}
-      <div className="border-t border-border px-2 py-2">
-        <div className="flex gap-1 overflow-x-auto">
-          {["PCA", "Clusters", "Forecast"].map((tab, i) => (
-            <button
-              key={tab}
-              className={cn(
-                "rounded-md px-3 py-1.5 text-xs whitespace-nowrap transition-colors",
-                i === 0
-                  ? "bg-surface text-text-primary"
-                  : "text-text-muted hover:bg-surface/50 hover:text-text-primary"
-              )}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
+      {/* Tab bar */}
+      <div className="flex gap-1 border-t border-border px-3 py-2">
+        {TABS.map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={cn(
+              "rounded px-3 py-1 text-xs font-medium transition-colors",
+              activeTab === tab
+                ? "bg-elevated text-text-primary"
+                : "text-text-muted hover:text-text-secondary"
+            )}
+          >
+            {tab}
+          </button>
+        ))}
       </div>
     </div>
   )

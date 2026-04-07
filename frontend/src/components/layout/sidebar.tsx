@@ -3,22 +3,7 @@
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import {
-  FileText,
-  Table,
-  Hash,
-  Type,
-  Calendar,
-  ChevronRight,
-  ChevronDown,
-  TrendingUp,
-  AlertCircle,
-  Upload,
-  Settings,
-  History,
-} from "lucide-react"
+import { FileText, Hash, Type, Calendar, ChevronRight, ChevronDown, AlertCircle, Upload, Settings } from "lucide-react"
 
 interface SidebarProps {
   sessionInfo?: {
@@ -27,258 +12,148 @@ interface SidebarProps {
     columns: string[]
     dtypes: Record<string, string>
   }
-  className?: string
 }
 
-interface ColumnGroup {
-  name: string
-  icon: React.ReactNode
-  columns: string[]
-  color: string
+function SectionToggle({
+  label,
+  open,
+  onToggle,
+}: {
+  label: string
+  open: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className="flex w-full items-center justify-between px-4 py-2 text-[11px] font-semibold uppercase tracking-widest text-text-muted transition-colors hover:text-text-secondary"
+    >
+      {label}
+      {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+    </button>
+  )
 }
 
-/**
- * Sidebar — Left panel showing file info, column browser, and quick stats.
- */
-export function Sidebar({ sessionInfo, className }: SidebarProps) {
-  const [expandedSections, setExpandedSections] = useState({
-    columns: true,
-    stats: false,
-    history: false,
-  })
+export function Sidebar({ sessionInfo }: SidebarProps) {
+  const [sections, setSections] = useState({ columns: true, history: false })
 
-  const toggleSection = (section: keyof typeof expandedSections) => {
-    setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }))
-  }
+  const toggle = (k: keyof typeof sections) =>
+    setSections((p) => ({ ...p, [k]: !p[k] }))
 
-  // Group columns by type
-  const columnGroups: ColumnGroup[] = [
-    {
-      name: "Numeric",
-      icon: <Hash className="h-3 w-3" />,
-      columns:
-        sessionInfo?.columns.filter((col) =>
-          sessionInfo.dtypes[col]?.match(/int|float|number/i)
-        ) || [],
-      color: "text-[#00DCB4]",
-    },
-    {
-      name: "Categorical",
-      icon: <Type className="h-3 w-3" />,
-      columns:
-        sessionInfo?.columns.filter((col) =>
-          sessionInfo.dtypes[col]?.match(/object|string|category/i)
-        ) || [],
-      color: "text-[#9D4EDD]",
-    },
-    {
-      name: "Date/Time",
-      icon: <Calendar className="h-3 w-3" />,
-      columns:
-        sessionInfo?.columns.filter((col) =>
-          sessionInfo.dtypes[col]?.match(/date|time|datetime/i)
-        ) || [],
-      color: "text-[#FF6B35]",
-    },
-  ]
+  const numericCols = sessionInfo?.columns.filter((c) => sessionInfo.dtypes[c]?.match(/int|float/i)) ?? []
+  const textCols = sessionInfo?.columns.filter((c) => sessionInfo.dtypes[c]?.match(/object|string|category/i)) ?? []
+  const dateCols = sessionInfo?.columns.filter((c) => sessionInfo.dtypes[c]?.match(/date|time/i)) ?? []
 
   return (
-    <div className={cn("flex h-full flex-col border-r border-border bg-background", className)}>
+    <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="border-b border-border px-4 py-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface">
-            <FileText className="h-5 w-5 text-[#FF6B35]" />
+      <div className="px-4 py-4">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-elevated">
+            <FileText className="h-4 w-4 text-primary" />
           </div>
-          <div className="flex-1 overflow-hidden">
-            <h3 className="truncate text-sm font-medium text-text-primary">
-              {sessionInfo?.filename || "No file uploaded"}
-            </h3>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-text-primary">
+              {sessionInfo?.filename ?? "No file"}
+            </p>
             {sessionInfo && (
-              <p className="text-xs text-text-muted">
-                {sessionInfo.shape[0].toLocaleString()} rows × {sessionInfo.shape[1].toLocaleString()} cols
+              <p className="text-[11px] text-text-muted">
+                {sessionInfo.shape[0].toLocaleString()} × {sessionInfo.shape[1]} 
               </p>
             )}
           </div>
         </div>
       </div>
 
-      {/* Quick Stats — always visible when data present */}
+      {/* Quick Stats — always visible when data loaded */}
       {sessionInfo && (
-        <div className="border-b border-border px-4 py-3">
-          <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-text-muted">Quick Stats</p>
-          <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-md bg-surface/50 p-2 text-center">
-              <div className="text-sm font-semibold text-[#00DCB4]">{columnGroups[0].columns.length}</div>
-              <div className="text-[10px] text-text-muted">Numeric</div>
-            </div>
-            <div className="rounded-md bg-surface/50 p-2 text-center">
-              <div className="text-sm font-semibold text-[#9D4EDD]">{columnGroups[1].columns.length}</div>
-              <div className="text-[10px] text-text-muted">Text</div>
-            </div>
-            <div className="rounded-md bg-surface/50 p-2 text-center">
-              <div className="text-sm font-semibold text-[#FF6B35]">{columnGroups[2].columns.length}</div>
-              <div className="text-[10px] text-text-muted">Date</div>
-            </div>
+        <div className="mx-4 mb-3 rounded bg-elevated p-3">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+            Quick Stats
+          </p>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            {[
+              { count: numericCols.length, label: "Numeric", icon: <Hash className="h-3 w-3" /> },
+              { count: textCols.length, label: "Text", icon: <Type className="h-3 w-3" /> },
+              { count: dateCols.length, label: "Date", icon: <Calendar className="h-3 w-3" /> },
+            ].map(({ count, label, icon }) => (
+              <div key={label}>
+                <div className="text-base font-bold text-text-primary">{count}</div>
+                <div className="flex items-center justify-center gap-0.5 text-[10px] text-text-muted">
+                  {icon}
+                  {label}
+                </div>
+              </div>
+            ))}
           </div>
-          <div className="mt-2 flex items-center gap-1.5 rounded-md bg-surface/30 px-2 py-1.5 text-xs text-text-muted">
+          <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-text-muted">
             <AlertCircle className="h-3 w-3 shrink-0" />
-            <span>Missing: 0 values</span>
+            <span>0 missing values</span>
           </div>
         </div>
       )}
 
       <ScrollArea className="flex-1">
-        {/* Quick Stats */}
-        <div className="border-b border-border">
-          <button
-            onClick={() => toggleSection("stats")}
-            className="flex w-full items-center justify-between px-4 py-2 text-xs font-medium uppercase tracking-wider text-text-muted hover:bg-surface/50"
-          >
-            <span className="flex items-center gap-2">
-              <TrendingUp className="h-3 w-3" />
-              Quick Stats
-            </span>
-            {expandedSections.stats ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
-          </button>
-
-          {expandedSections.stats && sessionInfo && (
-            <div className="space-y-2 px-4 pb-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-md bg-surface/50 p-2">
-                  <div className="text-xs text-text-muted">Numeric</div>
-                  <div className="text-lg font-semibold text-[#00DCB4]">
-                    {columnGroups[0].columns.length}
-                  </div>
+        {/* Columns */}
+        <SectionToggle label="Columns" open={sections.columns} onToggle={() => toggle("columns")} />
+        {sections.columns && (
+          <div className="px-2 pb-2">
+            {[
+              { name: "Numeric", cols: numericCols, color: "text-success" },
+              { name: "Text", cols: textCols, color: "text-agent" },
+              { name: "Date", cols: dateCols, color: "text-primary" },
+            ].map(({ name, cols, color }) =>
+              cols.length > 0 ? (
+                <div key={name} className="mb-3">
+                  <p className={cn("mb-1 px-2 text-[10px] font-semibold uppercase tracking-widest", color)}>
+                    {name}
+                  </p>
+                  {cols.map((col) => (
+                    <button
+                      key={col}
+                      className="flex w-full items-center rounded px-2 py-1.5 text-left text-sm text-text-secondary transition-colors hover:bg-elevated hover:text-text-primary"
+                    >
+                      {col}
+                    </button>
+                  ))}
                 </div>
-                <div className="rounded-md bg-surface/50 p-2">
-                  <div className="text-xs text-text-muted">Categorical</div>
-                  <div className="text-lg font-semibold text-[#9D4EDD]">
-                    {columnGroups[1].columns.length}
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 rounded-md bg-surface/50 p-2 text-xs text-text-muted">
-                <AlertCircle className="h-3 w-3" />
-                <span>Missing values: 0</span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Column Browser */}
-        <div className="border-b border-border">
-          <button
-            onClick={() => toggleSection("columns")}
-            className="flex w-full items-center justify-between px-4 py-2 text-xs font-medium uppercase tracking-wider text-text-muted hover:bg-surface/50"
-          >
-            <span className="flex items-center gap-2">
-              <Table className="h-3 w-3" />
-              Columns
-            </span>
-            {expandedSections.columns ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
+              ) : null
             )}
-          </button>
-
-          {expandedSections.columns && (
-            <div className="px-2 pb-2">
-              {columnGroups.map((group) =>
-                group.columns.length > 0 ? (
-                  <div key={group.name} className="mb-3">
-                    <div className="mb-1 flex items-center gap-2 px-2 text-xs font-medium text-text-muted">
-                      <span className={group.color}>{group.icon}</span>
-                      <span>{group.name}</span>
-                      <Badge variant="outline" className="ml-auto h-5 text-xs">
-                        {group.columns.length}
-                      </Badge>
-                    </div>
-                    <div className="space-y-0.5">
-                      {group.columns.map((col) => (
-                        <button
-                          key={col}
-                          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
-                        >
-                          <span className="truncate">{col}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Session History */}
-        <div>
-          <button
-            onClick={() => toggleSection("history")}
-            className="flex w-full items-center justify-between px-4 py-2 text-xs font-medium uppercase tracking-wider text-text-muted hover:bg-surface/50"
-          >
-            <span className="flex items-center gap-2">
-              <History className="h-3 w-3" />
-              History
-            </span>
-            {expandedSections.history ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
+            {!sessionInfo && (
+              <p className="px-2 py-4 text-center text-xs text-text-disabled">Upload a file to browse columns</p>
             )}
-          </button>
+          </div>
+        )}
 
-          {expandedSections.history && (
-            <div className="px-2 pb-2">
-              <div className="space-y-1">
-                {["Q4 2024", "Q3 2024", "Q2 2024", "Q1 2024"].map((session, i) => (
-                  <button
-                    key={session}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-surface",
-                      i === 0
-                        ? "bg-surface text-text-primary"
-                        : "text-text-secondary"
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        "h-2 w-2 rounded-full",
-                        i === 0 ? "bg-[#FF6B35]" : "bg-border"
-                      )}
-                    />
-                    <span>{session}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        <div className="my-1 mx-4 h-px bg-border" />
+
+        {/* History */}
+        <SectionToggle label="History" open={sections.history} onToggle={() => toggle("history")} />
+        {sections.history && (
+          <div className="px-2 pb-2">
+            {["Q4 2024", "Q3 2024", "Q2 2024"].map((s, i) => (
+              <button
+                key={s}
+                className="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-left text-sm transition-colors hover:bg-elevated"
+              >
+                <div className={cn("h-1.5 w-1.5 rounded-full", i === 0 ? "bg-primary" : "bg-border")} />
+                <span className={i === 0 ? "text-text-primary font-medium" : "text-text-muted"}>{s}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </ScrollArea>
 
-      {/* Footer actions */}
+      {/* Footer */}
       <div className="border-t border-border p-3">
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1 border-border bg-surface/50 text-text-secondary hover:bg-surface hover:text-text-primary"
-          >
-            <Upload className="mr-2 h-4 w-4" />
+          <button className="flex flex-1 items-center justify-center gap-1.5 rounded px-3 py-2 text-xs text-text-muted transition-colors hover:bg-elevated hover:text-text-primary">
+            <Upload className="h-3.5 w-3.5" />
             Upload
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 w-9 border-border bg-surface/50 p-0 text-text-secondary hover:bg-surface hover:text-text-primary"
-          >
-            <Settings className="h-4 w-4" />
-          </Button>
+          </button>
+          <button className="flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-elevated hover:text-text-primary">
+            <Settings className="h-3.5 w-3.5 text-text-muted" />
+          </button>
         </div>
       </div>
     </div>

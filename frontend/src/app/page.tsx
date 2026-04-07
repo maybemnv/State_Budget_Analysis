@@ -2,264 +2,229 @@
 
 import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Upload, FileSpreadsheet, CheckCircle2, Loader2, Sparkles, AlertCircle } from "lucide-react"
+import { Upload, FileText, CheckCircle2, Loader2, AlertCircle, ArrowRight } from "lucide-react"
 import { api } from "@/lib/api"
+import { cn } from "@/lib/utils"
 
-type UploadStateType = "idle" | "uploading" | "parsing" | "done" | "error"
+type UploadState = "idle" | "uploading" | "parsing" | "done" | "error"
+
+const PREVIEW_ROWS = [
+  ["2024-01", "AG-001", "Infrastructure", "$123,456"],
+  ["2024-02", "AG-002", "Education", "$234,567"],
+  ["2024-03", "AG-001", "Healthcare", "$345,678"],
+  ["...", "...", "...", "..."],
+]
 
 export default function HomePage() {
   const router = useRouter()
-  const [uploadState, setUploadState] = useState<UploadStateType>("idle")
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [state, setState] = useState<UploadState>("idle")
   const [progress, setProgress] = useState(0)
   const [fileName, setFileName] = useState("")
   const [error, setError] = useState("")
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isDragging, setIsDragging] = useState(false)
 
-  const handleFileSelect = async (file: File) => {
+  const handleFile = async (file: File) => {
+    if (!file.name.match(/\.(csv|xlsx|xls|parquet)$/)) {
+      setError("Unsupported format. Upload CSV, XLSX, or Parquet.")
+      return
+    }
+
     setFileName(file.name)
-    setUploadState("uploading" as UploadStateType)
+    setState("uploading")
     setProgress(0)
     setError("")
 
+    const interval = setInterval(() => {
+      setProgress((p) => (p >= 88 ? (clearInterval(interval), 88) : p + 12))
+    }, 180)
+
     try {
-      // Simulate progress during upload
-      const progressInterval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 90) {
-            clearInterval(progressInterval)
-            return 90
-          }
-          return prev + 10
-        })
-      }, 200)
-
-      // Upload to backend
-      const response = await api.upload(file)
-      
-      console.log('Upload successful, session ID:', response.session_id)
-      
-      clearInterval(progressInterval)
+      const { session_id } = await api.upload(file)
+      clearInterval(interval)
       setProgress(100)
-      setUploadState("parsing" as UploadStateType)
-
-      // Brief pause to show completion
-      await new Promise(resolve => setTimeout(resolve, 800))
-      
-      setUploadState("done" as UploadStateType)
-      
-      // Redirect to workspace with real session ID
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      console.log('Redirecting to workspace:', `/workspace/${response.session_id}`)
-      router.push(`/workspace/${response.session_id}`)
+      setState("parsing")
+      await new Promise((r) => setTimeout(r, 900))
+      setState("done")
+      await new Promise((r) => setTimeout(r, 700))
+      router.push(`/workspace/${session_id}`)
     } catch (err) {
-      console.error('Upload error:', err)
-      setError(err instanceof Error ? err.message : 'Upload failed')
-      setUploadState("error" as UploadStateType)
+      clearInterval(interval)
+      setError(err instanceof Error ? err.message : "Upload failed")
+      setState("error")
     }
   }
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault()
+    setIsDragging(false)
     const file = e.dataTransfer.files[0]
-    if (file && file.name.match(/\.(csv|xlsx|xls|parquet)$/)) {
-      handleFileSelect(file)
-    } else {
-      setError('Unsupported file type. Please upload CSV, XLSX, XLS, or Parquet.')
-    }
-  }
-
-  const onDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
+    if (file) handleFile(file)
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
-      {/* Hero */}
-      <div className="mb-12 text-center">
-        <div className="mb-4 flex items-center justify-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#FF6B35] shadow-[0_0_30px_8px_rgba(255,133,85,0.3)]">
-            <Sparkles className="h-6 w-6 text-white" />
-          </div>
-        </div>
-        <h1 className="mb-3 text-4xl font-bold tracking-tight text-text-primary">
-          DataLens AI
-        </h1>
-        <p className="max-w-md text-text-secondary">
-          Autonomous data analysis powered by AI. Upload your dataset and start
-          a conversation.
-        </p>
-      </div>
-
-      {/* Upload Card */}
-      <Card className="w-full max-w-xl border-border bg-surface/30">
-        <CardContent className="p-8">
-          {uploadState === "idle" && (
-            <div
-              onDrop={onDrop}
-              onDragOver={onDragOver}
-              className="flex flex-col items-center justify-center border-2 border-dashed border-border rounded-lg p-12 text-center transition-colors hover:border-[#FF6B35]/50 hover:bg-surface/30"
+    <div className="flex min-h-screen flex-col bg-background">
+      {/* Nav */}
+      <nav className="flex items-center justify-between px-10 py-5">
+        <span className="text-sm font-semibold tracking-tight text-text-primary">
+          DataLens<span className="text-primary"> AI</span>
+        </span>
+        <div className="flex gap-1">
+          {["Terminal", "Archive", "Agents", "Settings"].map((item) => (
+            <button
+              key={item}
+              className="rounded-full px-3.5 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-surface hover:text-text-primary"
             >
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface">
-                <Upload className="h-8 w-8 text-[#FF6B35]" />
-              </div>
-              <h3 className="mb-2 text-lg font-medium text-text-primary">
-                Drop your file here
-              </h3>
-              <p className="mb-4 text-sm text-text-muted">
-                or click to browse
-              </p>
-              <p className="text-xs text-text-muted">
-                Supported: CSV, XLSX, XLS, Parquet (max 100MB)
-              </p>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv,.xlsx,.xls,.parquet"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) handleFileSelect(file)
-                }}
-              />
-              <Button
-                onClick={() => fileInputRef.current?.click()}
-                className="mt-6 bg-[#FF6B35] hover:bg-[#FF8555]"
-              >
-                Select File
-              </Button>
-            </div>
-          )}
+              {item}
+            </button>
+          ))}
+        </div>
+      </nav>
 
-          {uploadState === "uploading" && (
-            <div className="flex flex-col items-center py-12">
-              <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-surface">
-                <FileSpreadsheet className="h-8 w-8 text-[#FF6B35]" />
+      {/* Hero */}
+      <div className="flex flex-1 flex-col items-center justify-center px-6 pb-20 pt-12">
+        {/* Orange radial — the ONE accent region */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 flex items-start justify-center"
+          style={{
+            background:
+              "radial-gradient(ellipse 60% 40% at 50% 20%, rgba(228,77,10,0.09) 0%, transparent 70%)",
+          }}
+        />
+
+        {/* Ghost code texture — upper right, decorative only */}
+        <pre
+          aria-hidden
+          className="pointer-events-none absolute right-10 top-24 select-none font-mono text-[11px] leading-5 text-text-primary opacity-[0.04]"
+        >
+          {`const df = pd.read_csv(file)
+schema = df.dtypes.to_dict()
+agent.run(query, context=schema)
+insights = llm.analyze(df.head(100))`}
+        </pre>
+
+        <div className="relative w-full max-w-xl">
+          {/* Headline */}
+          <div className="mb-10 text-center">
+            <h1 className="mb-3 text-5xl font-bold tracking-tight text-text-primary">
+              Ingest. Analyze. Act.
+            </h1>
+            <p className="text-base text-text-muted">
+              Drop your dataset. The agent does the rest.
+            </p>
+          </div>
+
+          {/* Upload card */}
+          <div className="rounded-lg border border-border bg-surface">
+            {state === "idle" && (
+              <div
+                onDrop={onDrop}
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
+                onDragLeave={() => setIsDragging(false)}
+                onClick={() => fileInputRef.current?.click()}
+                className={cn(
+                  "flex cursor-pointer flex-col items-center px-10 py-14 text-center transition-colors",
+                  isDragging ? "bg-elevated" : "hover:bg-elevated/50"
+                )}
+              >
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                  <Upload className="h-5 w-5 text-primary" />
+                </div>
+                <p className="mb-1 text-sm font-medium text-text-primary">
+                  Drop your file here
+                </p>
+                <p className="text-xs text-text-muted">CSV · XLSX · Parquet · up to 100 MB</p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls,.parquet"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f) }}
+                />
               </div>
-              <h3 className="mb-2 text-lg font-medium text-text-primary">
-                {fileName}
-              </h3>
-              <p className="mb-4 text-sm text-text-muted">Uploading to server...</p>
-              <div className="w-full max-w-xs">
-                <div className="h-2 w-full overflow-hidden rounded-full bg-border">
+            )}
+
+            {(state === "uploading" || state === "parsing") && (
+              <div className="px-10 py-10">
+                <div className="mb-5 flex items-center gap-3">
+                  {state === "parsing" ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  ) : (
+                    <FileText className="h-4 w-4 text-text-muted" />
+                  )}
+                  <span className="text-sm font-medium text-text-primary">{fileName}</span>
+                </div>
+
+                {/* Progress bar */}
+                <div className="mb-1 h-1 w-full overflow-hidden rounded-full bg-elevated">
                   <div
-                    className="h-full bg-[#FF6B35] transition-all duration-200"
+                    className="h-full bg-primary transition-all duration-200"
                     style={{ width: `${progress}%` }}
                   />
                 </div>
-                <p className="mt-2 text-center text-xs text-text-muted">
-                  {progress}%
-                </p>
-              </div>
-            </div>
-          )}
+                <p className="mb-6 text-right text-xs text-text-muted">{progress}%</p>
 
-          {uploadState === "parsing" && (
-            <div className="flex flex-col items-center py-8">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-surface">
-                <Loader2 className="h-6 w-6 animate-spin text-[#FF6B35]" />
-              </div>
-              <h3 className="mb-1 text-sm font-medium text-text-primary">{fileName}</h3>
-              <p className="mb-4 text-xs text-text-muted">Parsing rows...</p>
-
-              {/* Cascade table animation */}
-              <div className="w-full overflow-hidden rounded-md border border-border text-[10px]">
-                <div className="grid grid-cols-4 border-b border-border bg-elevated px-3 py-1.5 font-medium text-text-muted animate-fade-in-up">
-                  {["date", "agency", "category", "amount"].map((h) => (
-                    <span key={h}>{h}</span>
-                  ))}
-                </div>
-                {[
-                  ["2024-01", "AG-001", "A", "$123,456"],
-                  ["2024-02", "AG-002", "B", "$234,567"],
-                  ["2024-03", "AG-001", "C", "$345,678"],
-                  ["...", "...", "...", "..."],
-                ].map((row, i) => (
-                  <div
-                    key={i}
-                    className="grid grid-cols-4 px-3 py-1.5 text-text-secondary opacity-0 animate-fade-in-up border-b border-border/50 last:border-0"
-                    style={{ animationDelay: `${(i + 1) * 150}ms`, animationFillMode: "forwards" }}
-                  >
-                    {row.map((cell, j) => <span key={j}>{cell}</span>)}
+                {/* Cascade table — parsing state */}
+                {state === "parsing" && (
+                  <div className="overflow-hidden rounded border border-border font-mono text-[11px]">
+                    <div className="grid grid-cols-4 border-b border-border bg-elevated px-3 py-2 font-semibold text-text-muted animate-fade-in-up">
+                      {["date", "agency", "category", "amount"].map((h) => <span key={h}>{h}</span>)}
+                    </div>
+                    {PREVIEW_ROWS.map((row, i) => (
+                      <div
+                        key={i}
+                        className="grid grid-cols-4 border-b border-border/50 px-3 py-1.5 text-text-secondary opacity-0 last:border-0 animate-fade-in-up"
+                        style={{ animationDelay: `${(i + 1) * 120}ms`, animationFillMode: "forwards" }}
+                      >
+                        {row.map((cell, j) => <span key={j}>{cell}</span>)}
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
-            </div>
-          )}
+            )}
 
-          {uploadState === "done" && (
-            <div className="flex flex-col items-center py-12">
-              <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
-                <CheckCircle2 className="h-8 w-8 text-success" />
+            {state === "done" && (
+              <div className="flex flex-col items-center px-10 py-14">
+                <CheckCircle2 className="mb-3 h-10 w-10 text-success animate-scale-in" />
+                <p className="text-sm font-medium text-text-primary">Dataset ready — redirecting</p>
               </div>
-              <h3 className="mb-2 text-lg font-medium text-text-primary">
-                Dataset ready!
-              </h3>
-              <p className="text-sm text-text-muted">
-                Redirecting to workspace...
-              </p>
-            </div>
-          )}
+            )}
 
-          {uploadState === "error" && (
-            <div className="flex flex-col items-center py-12">
-              <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-error/10">
-                <AlertCircle className="h-8 w-8 text-error" />
+            {state === "error" && (
+              <div className="px-10 py-10 text-center">
+                <AlertCircle className="mx-auto mb-3 h-8 w-8 text-error" />
+                <p className="mb-4 text-sm text-text-primary">{error}</p>
+                <button
+                  onClick={() => { setState("idle"); setError("") }}
+                  className="rounded-full border border-border px-5 py-2 text-sm text-text-secondary transition-colors hover:border-border-hover hover:text-text-primary"
+                >
+                  Try again
+                </button>
               </div>
-              <h3 className="mb-2 text-lg font-medium text-text-primary">
-                Upload failed
-              </h3>
-              <p className="text-sm text-text-muted mb-4">
-                {error || 'Please try again or contact support.'}
-              </p>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setUploadState("idle")
-                  setFileName("")
-                  setProgress(0)
-                  setError("")
-                }}
-                className="border-border bg-surface/50"
-              >
-                Try Again
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Features */}
-      <div className="mt-16 grid max-w-3xl grid-cols-3 gap-8">
-        {[
-          {
-            icon: <Sparkles className="h-5 w-5" />,
-            title: "AI-Powered",
-            desc: "Autonomous agent that reasons step-by-step",
-          },
-          {
-            icon: <FileSpreadsheet className="h-5 w-5" />,
-            title: "Any Dataset",
-            desc: "CSV, Excel, or Parquet up to 100MB",
-          },
-          {
-            icon: <CheckCircle2 className="h-5 w-5" />,
-            title: "Actionable Insights",
-            desc: "Clear answers with visualizations",
-          },
-        ].map((feature) => (
-          <div key={feature.title} className="text-center">
-            <div className="mb-3 flex items-center justify-center gap-2 text-[#FF6B35]">
-              {feature.icon}
-            </div>
-            <h3 className="mb-1 text-sm font-medium text-text-primary">
-              {feature.title}
-            </h3>
-            <p className="text-xs text-text-muted">{feature.desc}</p>
+            )}
           </div>
-        ))}
+
+          {/* Inline CTA row */}
+          {state === "idle" && (
+            <div className="mt-6 flex items-center justify-center gap-6 text-xs text-text-muted">
+              <span>CSV, XLSX, Parquet</span>
+              <span className="h-3 w-px bg-border" />
+              <span>Up to 100 MB</span>
+              <span className="h-3 w-px bg-border" />
+              <span>No account needed</span>
+            </div>
+          )}
+        </div>
+
+        {/* Typographic counterweight */}
+        <p
+          aria-hidden
+          className="pointer-events-none absolute bottom-8 right-10 select-none font-mono text-[80px] font-bold leading-none tracking-tighter text-text-primary opacity-[0.03]"
+        >
+          DL.AI
+        </p>
       </div>
     </div>
   )

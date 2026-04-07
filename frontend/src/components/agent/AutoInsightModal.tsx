@@ -3,7 +3,6 @@
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { Zap, X, ChevronRight, BarChart3 } from "lucide-react"
-import { Button } from "@/components/ui/button"
 
 interface Insight {
   title: string
@@ -15,110 +14,82 @@ interface AutoInsightModalProps {
   onDigDeeper: (insight: Insight) => void
   onShowVisualizations: () => void
   onDismiss: () => void
-  className?: string
 }
 
-/**
- * AutoInsightModal — "Holy shit" moment: shows 3 non-obvious patterns
- * discovered automatically after dataset upload.
- */
-export function AutoInsightModal({
-  insights,
-  onDigDeeper,
-  onShowVisualizations,
-  onDismiss,
-  className,
-}: AutoInsightModalProps) {
+export function AutoInsightModal({ insights, onDigDeeper, onShowVisualizations, onDismiss }: AutoInsightModalProps) {
   const [expanded, setExpanded] = useState<number | null>(0)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div
-        className={cn(
-          "w-full max-w-2xl overflow-hidden rounded-xl border border-border bg-surface shadow-2xl animate-scale-in",
-          className
-        )}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-text-primary/10 backdrop-blur-sm">
+      <div className="w-full max-w-xl overflow-hidden rounded-lg border border-border bg-surface shadow-xl animate-scale-in">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#FF6B35]/10">
-              <Zap className="h-5 w-5 text-[#FF6B35]" />
+            <div className="flex h-8 w-8 items-center justify-center rounded bg-primary/10">
+              <Zap className="h-4 w-4 text-primary" />
             </div>
             <div>
               <h2 className="text-sm font-semibold text-text-primary">Auto-Insight Mode</h2>
-              <p className="text-xs text-text-muted">{insights.length} patterns found in your data</p>
+              <p className="text-[11px] text-text-muted">{insights.length} patterns found in your data</p>
             </div>
           </div>
           <button
             onClick={onDismiss}
-            className="rounded-md p-1.5 text-text-muted transition-colors hover:bg-elevated hover:text-text-primary"
+            className="rounded p-1.5 text-text-muted transition-colors hover:bg-elevated hover:text-text-primary"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Insights */}
+        {/* Insights list */}
         <div className="divide-y divide-border">
           {insights.map((insight, i) => (
             <button
               key={i}
               onClick={() => setExpanded(expanded === i ? null : i)}
-              className="w-full px-6 py-4 text-left transition-colors hover:bg-elevated/50"
+              className="flex w-full items-start gap-3 px-6 py-4 text-left transition-colors hover:bg-elevated/60"
             >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3">
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#FF6B35]/10 text-xs font-bold text-[#FF6B35]">
-                    {i + 1}
-                  </span>
-                  <div>
-                    <p className="text-sm font-medium text-text-primary">{insight.title}</p>
-                    {expanded === i && (
-                      <p className="mt-2 text-sm leading-relaxed text-text-secondary animate-fade-in-up">
-                        {insight.body}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <ChevronRight
-                  className={cn(
-                    "mt-0.5 h-4 w-4 shrink-0 text-text-muted transition-transform",
-                    expanded === i && "rotate-90"
-                  )}
-                />
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">
+                {i + 1}
+              </span>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-text-primary">{insight.title}</p>
+                {expanded === i && (
+                  <p className="mt-2 text-sm leading-relaxed text-text-secondary animate-fade-in-up">
+                    {insight.body}
+                  </p>
+                )}
               </div>
+              <ChevronRight
+                className={cn("mt-0.5 h-4 w-4 shrink-0 text-text-muted transition-transform duration-200", expanded === i && "rotate-90")}
+              />
             </button>
           ))}
         </div>
 
         {/* Actions */}
         <div className="flex items-center justify-end gap-2 border-t border-border px-6 py-4">
-          <Button
-            variant="outline"
-            size="sm"
+          <button
             onClick={onDismiss}
-            className="border-border bg-surface/50 text-text-secondary"
+            className="rounded px-4 py-2 text-sm text-text-muted transition-colors hover:text-text-secondary"
           >
             Dismiss
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
+          </button>
+          <button
             onClick={onShowVisualizations}
-            className="border-agent/40 text-agent hover:bg-agent/10"
+            className="flex items-center gap-1.5 rounded border border-border px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:border-border-hover hover:text-text-primary"
           >
-            <BarChart3 className="mr-1.5 h-3.5 w-3.5" />
+            <BarChart3 className="h-3.5 w-3.5" />
             Visualizations
-          </Button>
+          </button>
           {expanded !== null && (
-            <Button
-              size="sm"
+            <button
               onClick={() => onDigDeeper(insights[expanded])}
-              className="bg-[#FF6B35] text-white hover:bg-[#FF8555]"
+              className="flex items-center gap-1.5 rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
             >
               Dig Deeper
-              <ChevronRight className="ml-1 h-3.5 w-3.5" />
-            </Button>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
           )}
         </div>
       </div>

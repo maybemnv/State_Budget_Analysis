@@ -1,59 +1,32 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { AgentState } from "@/lib/types"
+import type { AgentState } from "@/lib/types"
 
-interface AgentAvatarProps {
-  state?: AgentState
-  className?: string
+const STATE_CONFIG: Record<AgentState, { bg: string; glow: string; pulse: string; ringColor: string }> = {
+  idle:      { bg: "bg-agent/40",  glow: "[box-shadow:0_0_16px_2px_rgba(107,63,160,0.2)]",  pulse: "animate-pulse-slow", ringColor: "rgba(107,63,160,0.3)" },
+  thinking:  { bg: "bg-agent",     glow: "[box-shadow:0_0_24px_6px_rgba(107,63,160,0.4)]",  pulse: "animate-pulse-slow", ringColor: "rgba(107,63,160,0.4)" },
+  executing: { bg: "bg-primary",   glow: "[box-shadow:0_0_24px_6px_rgba(228,77,10,0.35)]",  pulse: "animate-pulse-fast", ringColor: "rgba(228,77,10,0.35)" },
+  done:      { bg: "bg-success",   glow: "[box-shadow:0_0_16px_2px_rgba(42,122,82,0.3)]",   pulse: "",                   ringColor: "" },
+  error:     { bg: "bg-error",     glow: "[box-shadow:0_0_16px_4px_rgba(192,57,43,0.4)]",   pulse: "",                   ringColor: "" },
 }
 
-/**
- * AgentAvatar — An abstract animated orb that represents the agent's presence.
- * Changes color and pulse based on agent state.
- * 
- * States:
- * - idle: subtle purple glow, slow pulse
- * - thinking: bright purple, slow pulse (~1Hz)
- * - executing: orange, fast pulse (~3Hz)
- * - done: teal, steady glow
- * - error: red, flickering
- */
-export function AgentAvatar({ state = "idle", className }: AgentAvatarProps) {
-  const stateStyles = {
-    idle: "bg-agent/60 shadow-[0_0_20px_4px_rgba(157,78,221,0.3)] animate-pulse-slow",
-    thinking: "bg-agent shadow-[0_0_30px_8px_rgba(157,78,221,0.5)] animate-pulse",
-    executing: "bg-[#FF8555] shadow-[0_0_30px_8px_rgba(255,133,85,0.5)] animate-pulse-fast",
-    done: "bg-success shadow-[0_0_20px_4px_rgba(0,220,180,0.3)]",
-    error: "bg-error shadow-[0_0_20px_4px_rgba(239,68,68,0.5)] animate-flicker",
-  }
+export function AgentAvatar({ state = "idle", className }: { state?: AgentState; className?: string }) {
+  const cfg = STATE_CONFIG[state]
 
   return (
     <div
-      className={cn(
-        "relative flex h-10 w-10 items-center justify-center rounded-full transition-all duration-500",
-        stateStyles[state],
-        className
-      )}
       role="status"
       aria-label={`Agent is ${state}`}
+      className={cn(
+        "relative flex h-9 w-9 items-center justify-center rounded-full transition-all duration-500",
+        cfg.bg,
+        cfg.glow,
+        cfg.pulse,
+        className
+      )}
     >
-      {/* Inner core */}
-      <div className="h-4 w-4 rounded-full bg-white/80 blur-[1px]" />
-      
-      {/* Outer glow ring */}
-      <div
-        className={cn(
-          "absolute inset-0 rounded-full opacity-30",
-          state === "thinking" && "animate-ping-slow",
-          state === "executing" && "animate-ping-fast"
-        )}
-        style={{
-          background: state === "executing" 
-            ? "radial-gradient(circle, rgba(255,133,85,0.4) 0%, transparent 70%)"
-            : "radial-gradient(circle, rgba(157,78,221,0.4) 0%, transparent 70%)"
-        }}
-      />
+      <div className="h-3.5 w-3.5 rounded-full bg-white/70 blur-[1px]" />
     </div>
   )
 }
