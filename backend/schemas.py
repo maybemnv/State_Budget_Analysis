@@ -80,7 +80,7 @@ class ClassificationInput(SessionUnwrapper):
 
 class AnomalyDetectionInput(SessionUnwrapper):
     columns: Optional[list[str]] = None
-    contamination: float = Field(default=0.05, gt=0.0, lt=0.5)
+    contamination: float = Field(default=0.05, gt=0.0, le=0.5)
 
 
 # --- Time series tool schemas ---

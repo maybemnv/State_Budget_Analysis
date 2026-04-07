@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { AgentAvatar } from "./AgentAvatar"
-import { ThoughtStep } from "./ThoughtStep"
+import { ThinkingBlock } from "./ThinkingBlock"
 import { ToolCallCard } from "./ToolCallCard"
 import { BackendStatusIndicator } from "@/components/ui/BackendStatusIndicator"
 import { useWebSocket } from "@/hooks/useWebSocket"
@@ -18,13 +18,22 @@ interface AgentChatProps {
   onTimelineStep?: (step: { label: string; timestamp: string }) => void
 }
 
-interface ChatMessage {
+interface ToolCall {
   id: string
-  type: "user" | "thought" | "tool_call" | "tool_result" | "answer" | "error"
-  content: string | unknown
-  tool?: string
+  tool: string
   args?: Record<string, unknown>
-  timestamp: Date
+  result?: unknown
+  done: boolean
+}
+
+interface Turn {
+  id: string
+  role: "user" | "agent"
+  content?: string         // user message text
+  thoughts?: string[]     // agent reasoning steps
+  toolCalls?: ToolCall[]  // agent tool calls
+  answer?: string         // final answer
+  thinking: boolean       // is agent still generating this turn
 }
 
 const SUGGESTIONS = [
@@ -35,11 +44,11 @@ const SUGGESTIONS = [
 ]
 
 const now = () => new Date().toLocaleTimeString("en-US", { hour12: false })
-const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
 export function AgentChat({ sessionId, onChartSpec, onAgentStateChange, onTimelineStep }: AgentChatProps) {
   const [input, setInput] = useState("")
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [turns, setTurns] = useState<Turn[]>([])
   const [agentState, setAgentState] = useState<AgentState>("idle")
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -49,32 +58,68 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange, onTimeli
     onAgentStateChange?.(state)
   }
 
+  // Helpers to mutate the latest agent turn
+  const updateLatestAgentTurn = (updater: (turn: Turn) => Turn) => {
+    setTurns((prev) => {
+      const idx = [...prev].reverse().findIndex((t) => t.role === "agent")
+      if (idx === -1) return prev
+      const realIdx = prev.length - 1 - idx
+      const updated = [...prev]
+      updated[realIdx] = updater(updated[realIdx])
+      return updated
+    })
+  }
+
+  const ensureAgentTurn = (cb: (turns: Turn[]) => Turn[]) => {
+    setTurns((prev) => {
+      const last = prev[prev.length - 1]
+      if (last?.role === "agent" && last.thinking) return cb(prev)
+      const newTurn: Turn = { id: uid(), role: "agent", thoughts: [], toolCalls: [], thinking: true }
+      return cb([...prev, newTurn])
+    })
+  }
+
   const { sendMessage, isConnected } = useWebSocket({
     sessionId,
     onThought: (content) => {
       setAgent("thinking")
       onTimelineStep?.({ label: "thinking", timestamp: now() })
-      setMessages((p) => [...p, { id: uid("thought"), type: "thought", content, timestamp: new Date() }])
+      ensureAgentTurn((turns) => {
+        const updated = [...turns]
+        const last = updated[updated.length - 1]
+        updated[updated.length - 1] = { ...last, thoughts: [...(last.thoughts ?? []), content] }
+        return updated
+      })
     },
     onToolCall: (tool, args) => {
       setAgent("executing")
       onTimelineStep?.({ label: tool, timestamp: now() })
-      setMessages((p) => [...p, { id: uid("tool"), type: "tool_call", tool, args, content: "", timestamp: new Date() }])
+      const callId = uid()
+      ensureAgentTurn((turns) => {
+        const updated = [...turns]
+        const last = updated[updated.length - 1]
+        updated[updated.length - 1] = {
+          ...last,
+          toolCalls: [...(last.toolCalls ?? []), { id: callId, tool, args, done: false }],
+        }
+        return updated
+      })
     },
     onToolResult: (_, result) => {
-      setMessages((p) => {
-        const lastToolIdx = [...p].reverse().findIndex((m) => m.type === "tool_call")
-        if (lastToolIdx === -1) return p
-        const idx = p.length - 1 - lastToolIdx
-        const updated = [...p]
-        updated[idx] = { ...updated[idx], type: "tool_result", content: result }
-        return updated
+      updateLatestAgentTurn((turn) => {
+        const toolCalls = [...(turn.toolCalls ?? [])]
+        const lastPending = [...toolCalls].reverse().findIndex((c) => !c.done)
+        if (lastPending !== -1) {
+          const realIdx = toolCalls.length - 1 - lastPending
+          toolCalls[realIdx] = { ...toolCalls[realIdx], result, done: true }
+        }
+        return { ...turn, toolCalls }
       })
     },
     onAnswer: (content) => {
       setAgent("done")
       onTimelineStep?.({ label: "answer", timestamp: now() })
-      setMessages((p) => [...p, { id: uid("answer"), type: "answer", content, timestamp: new Date() }])
+      updateLatestAgentTurn((turn) => ({ ...turn, answer: content, thinking: false }))
       setTimeout(() => setAgent("idle"), 2000)
     },
     onChart: (spec) => {
@@ -83,7 +128,7 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange, onTimeli
     },
     onError: (message) => {
       setAgent("error")
-      setMessages((p) => [...p, { id: uid("error"), type: "error", content: message, timestamp: new Date() }])
+      updateLatestAgentTurn((turn) => ({ ...turn, answer: `Error: ${message}`, thinking: false }))
       setTimeout(() => setAgent("idle"), 2000)
     },
     onDone: () => setAgent("idle"),
@@ -91,12 +136,12 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange, onTimeli
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+  }, [turns])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || !isConnected) return
-    setMessages((p) => [...p, { id: uid("user"), type: "user", content: input, timestamp: new Date() }])
+    setTurns((p) => [...p, { id: uid(), role: "user", content: input, thinking: false }])
     sendMessage({ message: input })
     setInput("")
   }
@@ -121,11 +166,11 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange, onTimeli
         <BackendStatusIndicator />
       </div>
 
-      {/* Messages */}
+      {/* Turns */}
       <ScrollArea className="flex-1 px-5 py-5">
-        <div className="space-y-4">
+        <div className="space-y-6">
           {/* Connection error */}
-          {!isConnected && messages.length === 0 && (
+          {!isConnected && turns.length === 0 && (
             <div className="rounded border border-error/20 bg-error/5 p-4 text-center">
               <p className="text-sm text-error">Connection failed</p>
               <p className="mt-1 text-xs text-text-muted">Ensure backend is running at http://localhost:8000</p>
@@ -133,7 +178,7 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange, onTimeli
           )}
 
           {/* Empty state */}
-          {messages.length === 0 && isConnected && (
+          {turns.length === 0 && isConnected && (
             <div className="flex flex-col items-center justify-center py-14 text-center">
               <Sparkles className="mb-4 h-10 w-10 text-primary/30" />
               <h3 className="mb-1 text-base font-semibold text-text-primary">Ask anything about your data</h3>
@@ -152,54 +197,67 @@ export function AgentChat({ sessionId, onChartSpec, onAgentStateChange, onTimeli
             </div>
           )}
 
-          {/* Message list */}
-          {messages.map((msg, i) => {
-            if (msg.type === "user") {
+          {/* Turn rendering */}
+          {turns.map((turn) => {
+            if (turn.role === "user") {
               return (
-                <div key={msg.id} className="flex justify-end">
+                <div key={turn.id} className="flex justify-end">
                   <div className="max-w-[78%] rounded-lg bg-primary px-4 py-2.5 text-sm text-primary-foreground">
-                    {String(msg.content)}
+                    {turn.content}
                   </div>
                 </div>
               )
             }
-            if (msg.type === "thought") {
-              return <ThoughtStep key={msg.id} content={String(msg.content)} index={i} />
-            }
-            if (msg.type === "tool_call" || msg.type === "tool_result") {
-              return (
-                <ToolCallCard
-                  key={msg.id}
-                  tool={msg.tool ?? "unknown"}
-                  args={msg.args}
-                  result={msg.type === "tool_result" ? msg.content : undefined}
-                  status={msg.type === "tool_call" ? "executing" : "completed"}
-                  index={i}
-                />
-              )
-            }
-            if (msg.type === "answer") {
-              return (
-                <div key={msg.id} className="overflow-hidden rounded-lg border-l-2 border-success bg-elevated animate-fade-in-up">
-                  <div className="flex items-center gap-2 border-b border-border px-4 py-2">
-                    <div className="h-1.5 w-1.5 rounded-full bg-success" />
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-success">Final Answer</span>
+
+            // Agent turn
+            return (
+              <div key={turn.id} className="space-y-3">
+                {/* Thinking block — collapsed when done */}
+                {(turn.thoughts?.length ?? 0) > 0 && (
+                  <ThinkingBlock
+                    thoughts={turn.thoughts!}
+                    isLive={turn.thinking}
+                  />
+                )}
+
+                {/* Tool calls */}
+                {turn.toolCalls?.map((tc, i) => (
+                  <ToolCallCard
+                    key={tc.id}
+                    tool={tc.tool}
+                    args={tc.args}
+                    result={tc.result}
+                    status={tc.done ? "completed" : "executing"}
+                    index={i}
+                  />
+                ))}
+
+                {/* Final answer */}
+                {turn.answer && (
+                  <div className={cn(
+                    "overflow-hidden rounded-lg border-l-2 bg-elevated animate-fade-in-up",
+                    turn.answer.startsWith("Error:")
+                      ? "border-error bg-error/5"
+                      : "border-success"
+                  )}>
+                    {!turn.answer.startsWith("Error:") && (
+                      <div className="flex items-center gap-2 border-b border-border px-4 py-2">
+                        <div className="h-1.5 w-1.5 rounded-full bg-success" />
+                        <span className="text-[10px] font-semibold uppercase tracking-widest text-success">Answer</span>
+                      </div>
+                    )}
+                    <div className={cn(
+                      "px-4 py-3 text-sm leading-relaxed",
+                      turn.answer.startsWith("Error:") ? "text-error" : "text-text-primary"
+                    )}>
+                      {turn.answer}
+                    </div>
                   </div>
-                  <div className="px-4 py-3 text-sm leading-relaxed text-text-primary">
-                    {String(msg.content)}
-                  </div>
-                </div>
-              )
-            }
-            if (msg.type === "error") {
-              return (
-                <div key={msg.id} className="rounded border border-error/20 bg-error/5 px-4 py-3 text-sm text-error animate-fade-in-up">
-                  {String(msg.content)}
-                </div>
-              )
-            }
-            return null
+                )}
+              </div>
+            )
           })}
+
           <div ref={scrollRef} />
         </div>
       </ScrollArea>

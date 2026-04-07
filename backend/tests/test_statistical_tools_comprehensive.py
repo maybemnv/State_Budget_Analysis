@@ -144,8 +144,8 @@ class TestDescriptiveStats:
                 "columns": ["nonexistent"],
             })
             
-            # Should return empty since column doesn't exist
-            assert result == {}
+            # Should return error since column doesn't exist
+            assert "error" in result
 
 
 class TestGroupByStats:

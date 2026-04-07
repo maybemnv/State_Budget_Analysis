@@ -4,6 +4,11 @@ import numpy as np
 
 def descriptive_stats(df: pd.DataFrame, columns: Optional[list[str]] = None) -> dict:
     cols = columns if columns is not None else df.select_dtypes(include="number").columns.tolist()
+    # Validate columns exist
+    if columns:
+        missing = [c for c in columns if c not in df.columns]
+        if missing:
+            raise ValueError(f"Column not found: {missing[0]!r}")
     if not cols:
         return {}
     result = df[cols].describe().T
@@ -19,6 +24,10 @@ def group_by_stats(
 ) -> dict:
     if group_column not in df.columns or agg_column not in df.columns:
         raise ValueError(f"Column not found: {group_column!r} or {agg_column!r}")
+    # Check if agg_column is numeric for numeric aggregations
+    numeric_aggs = ["mean", "sum", "std", "min", "max", "median"]
+    if agg_func in numeric_aggs and not pd.api.types.is_numeric_dtype(df[agg_column]):
+        raise ValueError(f"Cannot apply {agg_func} to non-numeric column {agg_column!r}")
     grouped = (
         df.groupby(group_column)[agg_column]
         .agg(agg_func)

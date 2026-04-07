@@ -14,6 +14,11 @@ def perform_pca(
     n_components: Optional[int] = None,
 ) -> dict:
     cols = columns or df.select_dtypes(include="number").columns.tolist()
+    # Validate columns exist
+    if columns:
+        missing = [c for c in columns if c not in df.columns]
+        if missing:
+            raise ValueError(f"Column not found: {missing[0]!r}")
     if len(cols) < 2:
         raise ValueError("Need at least 2 numeric columns for PCA")
 
@@ -111,6 +116,12 @@ def train_regression_model(
 
     num_cols = df.select_dtypes(include="number").columns.tolist()
     features = feature_columns or [c for c in num_cols if c != target_column]
+    
+    # Validate feature columns exist
+    missing = [c for c in features if c not in df.columns]
+    if missing:
+        raise ValueError(f"Feature column not found: {missing[0]!r}")
+    
     if not features:
         raise ValueError("No feature columns available")
 
@@ -128,6 +139,10 @@ def train_regression_model(
         "feature_importance": dict(
             zip(features, model.feature_importances_.round(4).tolist())
         ),
+        "predictions_vs_actual": [
+            {"actual": float(a), "predicted": float(p)}
+            for a, p in zip(y_test, y_pred)
+        ],
         "target_column": target_column,
         "feature_columns": features,
         "train_size": len(X_train),

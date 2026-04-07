@@ -11,7 +11,10 @@ async def descriptive_stats(session_id: Optional[str] = None, columns: list[str]
     df, err = await require_df(session_id)
     if err:
         return err
-    return statistical.descriptive_stats(df, columns)
+    try:
+        return statistical.descriptive_stats(df, columns)
+    except ValueError as e:
+        return {"error": str(e)}
 
 
 @tool("group_by_stats", args_schema=GroupByInput)

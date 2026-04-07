@@ -90,7 +90,7 @@ class TestCheckStationarity:
             assert "adf" in result
             assert "kpss" in result
             assert "p_value" in result["adf"]
-            assert "test_statistic" in result["adf"]
+            assert "statistic" in result["adf"]
             assert "critical_values" in result["adf"]
 
     @pytest.mark.asyncio
