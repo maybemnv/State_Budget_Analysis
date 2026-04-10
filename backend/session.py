@@ -1,7 +1,7 @@
 import json
 import io
 import base64
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional
 
 import pandas as pd
@@ -13,9 +13,13 @@ from .config import settings
 from .db import get_cache, get_redis
 from .db.models import Session as SessionModel
 from .logger import get_logger
+from .utils.time import utcnow
 
 logger = get_logger(__name__)
 
+# ─── Memory-safe DataFrame cache ─────────────────────────────────────
+# Max 10 DataFrames in memory. Entries are evicted automatically by
+# LRU policy AND manually when sessions expire or are deleted.
 _memory_cache: LRUCache[str, pd.DataFrame] = LRUCache(maxsize=10)
 
 
@@ -49,7 +53,6 @@ async def _store_df_in_redis(session_id: str, df: pd.DataFrame) -> None:
     try:
         buf = io.BytesIO()
         df.to_parquet(buf, index=False)
-        # Encode bytes to base64 string for Upstash Redis REST compatibility
         encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
         redis = await get_redis()
         await redis.client.setex(
@@ -59,7 +62,6 @@ async def _store_df_in_redis(session_id: str, df: pd.DataFrame) -> None:
         )
     except Exception as e:
         logger.warning(f"Failed to store DataFrame in Redis (session {session_id}): {e}")
-        # Continue without Redis - the data will be stored in PostgreSQL only
 
 
 async def _load_df_from_redis(session_id: str) -> Optional[pd.DataFrame]:
@@ -68,7 +70,6 @@ async def _load_df_from_redis(session_id: str) -> Optional[pd.DataFrame]:
         data = await redis.client.get(f"df:{session_id}")
         if not data:
             return None
-        # Decode base64 string back to parquet bytes
         decoded = base64.b64decode(data)
         return pd.read_parquet(io.BytesIO(decoded))
     except Exception as e:
@@ -83,7 +84,7 @@ async def create_session(df: pd.DataFrame, filename: str, db: AsyncSession) -> s
     await _store_df_in_redis(session_id, df)
 
     schema = _build_schema(df, filename)
-    expires_at = datetime.utcnow() + timedelta(seconds=settings.session_ttl_seconds)
+    expires_at = utcnow() + timedelta(seconds=settings.session_ttl_seconds)
 
     session_record = SessionModel(
         session_id=session_id,
@@ -128,7 +129,7 @@ async def get_session(session_id: str, db: AsyncSession) -> Optional[dict]:
     if record is None:
         return None
 
-    if record.expires_at is not None and record.expires_at < datetime.utcnow():
+    if record.expires_at is not None and record.expires_at.replace(tzinfo=None) < utcnow().replace(tzinfo=None):
         logger.warning(f"Session expired: {resolved_id}")
         return None
 
@@ -182,8 +183,10 @@ async def delete_session(session_id: str, db: AsyncSession) -> bool:
 
     get_cache().delete(f"session:{resolved_id}")
 
+    # FIX #1: Evict DataFrame from memory cache to prevent memory leak
     if resolved_id in _memory_cache:
         del _memory_cache[resolved_id]
+        logger.debug(f"Evicted DataFrame from memory cache: {resolved_id}")
 
     try:
         redis = await get_redis()
@@ -199,7 +202,7 @@ async def delete_session(session_id: str, db: AsyncSession) -> bool:
 async def list_sessions(db: AsyncSession) -> list[str]:
     result = await db.execute(
         select(SessionModel.session_id).where(
-            SessionModel.expires_at > datetime.utcnow()
+            SessionModel.expires_at > utcnow()
         )
     )
     return [row[0] for row in result.all()]
@@ -216,7 +219,7 @@ async def refresh_session_ttl(session_id: str, db: AsyncSession) -> bool:
     if record is None:
         return False
 
-    record.expires_at = datetime.utcnow() + timedelta(seconds=settings.session_ttl_seconds)
+    record.expires_at = utcnow() + timedelta(seconds=settings.session_ttl_seconds)
     await db.commit()
 
     try:

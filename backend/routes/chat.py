@@ -22,10 +22,14 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["chat"])
 
-KEEPALIVE_INTERVAL_SECONDS = 20
+# ─── Input validation limits ─────────────────────────────────────────
+# Prevent abuse: limit message length to avoid prompt injection and
+# context window explosions.
+MAX_MESSAGE_LENGTH = 4000  # characters
+MAX_KEEPALIVE_INTERVAL = 20  # seconds
 
 
-async def _keepalive(ws: WebSocket, interval: float = KEEPALIVE_INTERVAL_SECONDS) -> None:
+async def _keepalive(ws: WebSocket, interval: float = MAX_KEEPALIVE_INTERVAL) -> None:
     try:
         while True:
             await asyncio.sleep(interval)
@@ -46,6 +50,22 @@ async def _run_with_keepalive(ws: WebSocket, coro):
             pass
 
 LLM_CONTEXT_MESSAGES = 10
+
+
+def _validate_message(message: str) -> str:
+    """Validate and sanitize user message. Raises HTTPException on invalid input."""
+    if not message or not message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    if len(message) > MAX_MESSAGE_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Message too long ({len(message)} chars). Maximum is {MAX_MESSAGE_LENGTH} characters."
+        )
+
+    # Strip null bytes and control characters (common injection vector)
+    cleaned = "".join(c for c in message if ord(c) >= 32 or c in "\n\t\r")
+    return cleaned.strip()
 
 
 async def save_message(
@@ -171,6 +191,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                 except json.JSONDecodeError:
                     message = raw
 
+                # Input validation
+                try:
+                    message = _validate_message(message)
+                except HTTPException as e:
+                    await callback._send({"type": "error", "message": e.detail})
+                    continue
+
                 logger.debug(f"WS message: {message[:100]}...")
 
                 await save_message(session_id, "user", message, db=db)
@@ -249,14 +276,17 @@ async def chat(
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    # Input validation
+    message = _validate_message(body.message)
+
     await refresh_session_ttl(session_id, db)
 
     summary = await get_conversation_summary(session_id, db)
 
-    await save_message(session_id, "user", body.message, db=db)
+    await save_message(session_id, "user", message, db=db)
 
     start_time = time.time()
-    result = await run_agent(session_id, body.message, context=summary)
+    result = await run_agent(session_id, message, context=summary)
     duration_ms = int((time.time() - start_time) * 1000)
 
     parsed = parse_output(result.get("output", ""))

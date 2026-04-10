@@ -1,4 +1,5 @@
 from typing import Optional
+import asyncio
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
@@ -8,13 +9,22 @@ from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier, Isol
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, classification_report
 
-def perform_pca(
+
+async def perform_pca(
+    df: pd.DataFrame,
+    columns: Optional[list[str]] = None,
+    n_components: Optional[int] = None,
+) -> dict:
+    """Run PCA dimensionality reduction — non-blocking via thread pool."""
+    return await asyncio.to_thread(_perform_pca_sync, df, columns, n_components)
+
+
+def _perform_pca_sync(
     df: pd.DataFrame,
     columns: Optional[list[str]] = None,
     n_components: Optional[int] = None,
 ) -> dict:
     cols = columns or df.select_dtypes(include="number").columns.tolist()
-    # Validate columns exist
     if columns:
         missing = [c for c in columns if c not in df.columns]
         if missing:
@@ -49,7 +59,17 @@ def perform_pca(
         "columns": cols,
     }
 
-def perform_clustering(
+
+async def perform_clustering(
+    df: pd.DataFrame,
+    columns: Optional[list[str]] = None,
+    n_clusters: int = 3,
+) -> dict:
+    """K-means clustering — non-blocking via thread pool."""
+    return await asyncio.to_thread(_perform_clustering_sync, df, columns, n_clusters)
+
+
+def _perform_clustering_sync(
     df: pd.DataFrame,
     columns: Optional[list[str]] = None,
     n_clusters: int = 3,
@@ -82,7 +102,17 @@ def perform_clustering(
         "columns": cols,
     }
 
-def detect_anomalies(
+
+async def detect_anomalies(
+    df: pd.DataFrame,
+    columns: Optional[list[str]] = None,
+    contamination: float = 0.05,
+) -> dict:
+    """Anomaly detection via Isolation Forest — non-blocking via thread pool."""
+    return await asyncio.to_thread(_detect_anomalies_sync, df, columns, contamination)
+
+
+def _detect_anomalies_sync(
     df: pd.DataFrame,
     columns: Optional[list[str]] = None,
     contamination: float = 0.05,
@@ -105,7 +135,20 @@ def detect_anomalies(
         "columns": cols,
     }
 
-def train_regression_model(
+
+async def train_regression_model(
+    df: pd.DataFrame,
+    target_column: str,
+    feature_columns: Optional[list[str]] = None,
+    test_size: float = 0.2,
+) -> dict:
+    """Random Forest regression — non-blocking via thread pool."""
+    return await asyncio.to_thread(
+        _train_regression_sync, df, target_column, feature_columns, test_size
+    )
+
+
+def _train_regression_sync(
     df: pd.DataFrame,
     target_column: str,
     feature_columns: Optional[list[str]] = None,
@@ -116,12 +159,11 @@ def train_regression_model(
 
     num_cols = df.select_dtypes(include="number").columns.tolist()
     features = feature_columns or [c for c in num_cols if c != target_column]
-    
-    # Validate feature columns exist
+
     missing = [c for c in features if c not in df.columns]
     if missing:
         raise ValueError(f"Feature column not found: {missing[0]!r}")
-    
+
     if not features:
         raise ValueError("No feature columns available")
 
@@ -149,7 +191,20 @@ def train_regression_model(
         "test_size": len(X_test),
     }
 
-def train_classification_model(
+
+async def train_classification_model(
+    df: pd.DataFrame,
+    target_column: str,
+    feature_columns: Optional[list[str]] = None,
+    test_size: float = 0.2,
+) -> dict:
+    """Random Forest classification — non-blocking via thread pool."""
+    return await asyncio.to_thread(
+        _train_classification_sync, df, target_column, feature_columns, test_size
+    )
+
+
+def _train_classification_sync(
     df: pd.DataFrame,
     target_column: str,
     feature_columns: Optional[list[str]] = None,

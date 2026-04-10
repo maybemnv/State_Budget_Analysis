@@ -1,8 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, DateTime, JSON, Text, Index
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
+
+
+def _utcnow() -> datetime:
+    """Timezone-aware UTC now for model defaults."""
+    return datetime.now(timezone.utc)
 
 
 class Session(Base):
@@ -12,8 +17,8 @@ class Session(Base):
     filename = Column(String(512), nullable=False)
     file_path = Column(String(1024), nullable=True)
     schema = Column(JSON, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
     expires_at = Column(DateTime, nullable=True)
 
     __table_args__ = (
@@ -43,7 +48,7 @@ class Message(Base):
     tool_name = Column(String(128), nullable=True)
     tool_input = Column(JSON, nullable=True)
     tool_result = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
 
     __table_args__ = (
         Index("ix_messages_session_created", "session_id", "created_at"),
@@ -72,7 +77,7 @@ class ToolRun(Base):
     result_json = Column(JSON, nullable=True)
     error = Column(Text, nullable=True)
     duration_ms = Column(Integer, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
 
     __table_args__ = (
         Index("ix_tool_runs_session_created", "session_id", "created_at"),
@@ -99,7 +104,7 @@ class Chart(Base):
     chart_type = Column(String(64), nullable=True)
     vega_spec = Column(JSON, nullable=False)
     query = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
 
     __table_args__ = (
         Index("ix_charts_session_created", "session_id", "created_at"),

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
+from typing import Optional
 
 import groq
 from tenacity import (
@@ -22,7 +24,60 @@ from ..tools import ALL_TOOLS
 logger = logging.getLogger(__name__)
 
 AGENT_TIMEOUT_SECONDS = 120
-MAX_TOOL_OUTPUT_CHARS = 4000
+
+# ─── Executor cache: one per session ─────────────────────────────────
+# Reuses the LLM + agent executor across requests for the same session.
+# Avoids the 2-3 second cold-start penalty of creating a new executor
+# on every message. Evicted after 10 minutes of inactivity.
+_executor_cache: dict[str, tuple[AgentExecutor, float]] = {}
+_EXECUTOR_TTL_SECONDS = 600  # 10 minutes
+
+
+def _evict_stale_executors() -> None:
+    """Remove executors that haven't been used recently."""
+    now = time.monotonic()
+    stale = [sid for sid, (_, last_used) in _executor_cache.items() if now - last_used > _EXECUTOR_TTL_SECONDS]
+    for sid in stale:
+        del _executor_cache[sid]
+        logger.debug(f"Evicted stale executor for session: {sid}")
+
+
+def _get_or_create_executor(session_id: str) -> AgentExecutor:
+    """Get cached executor or create a new one. Evicts stale entries."""
+    _evict_stale_executors()
+
+    if session_id in _executor_cache:
+        executor, _ = _executor_cache[session_id]
+        _executor_cache[session_id] = (executor, time.monotonic())
+        return executor
+
+    llm = ChatGroq(
+        model=settings.model_name,
+        groq_api_key=settings.groq_api_key,
+        streaming=True,
+        temperature=0,
+        max_retries=1,
+    )
+    prompt = PromptTemplate(
+        template=_SYSTEM_PROMPT,
+        input_variables=["tools", "tool_names", "input", "agent_scratchpad"],
+        partial_variables={"session_id": session_id, "tool_guide": _TOOL_GUIDE},
+    )
+    agent = create_react_agent(llm, ALL_TOOLS, prompt)
+    executor = AgentExecutor(
+        agent=agent,
+        tools=ALL_TOOLS,
+        verbose=False,
+        max_iterations=12,
+        early_stopping_method="generate",
+        handle_parsing_errors=True,
+        return_intermediate_steps=True,
+    )
+
+    _executor_cache[session_id] = (executor, time.monotonic())
+    logger.debug(f"Created new executor for session: {session_id}")
+    return executor
+
 
 _TOOL_GUIDE = """\
 Tool selection guide — use the FIRST matching rule:
@@ -106,31 +161,6 @@ def _is_retryable(exc: BaseException) -> bool:
     return False
 
 
-def _build_executor(session_id: str) -> AgentExecutor:
-    llm = ChatGroq(
-        model=settings.model_name,
-        groq_api_key=settings.groq_api_key,
-        streaming=True,
-        temperature=0,
-        max_retries=1,
-    )
-    prompt = PromptTemplate(
-        template=_SYSTEM_PROMPT,
-        input_variables=["tools", "tool_names", "input", "agent_scratchpad"],
-        partial_variables={"session_id": session_id, "tool_guide": _TOOL_GUIDE},
-    )
-    agent = create_react_agent(llm, ALL_TOOLS, prompt)
-    return AgentExecutor(
-        agent=agent,
-        tools=ALL_TOOLS,
-        verbose=False,
-        max_iterations=12,
-        early_stopping_method="generate",
-        handle_parsing_errors=True,
-        return_intermediate_steps=True,
-    )
-
-
 @retry(
     retry=retry_if_exception(_is_retryable),
     stop=stop_after_attempt(3),
@@ -142,25 +172,42 @@ async def _invoke(executor: AgentExecutor, payload: dict, callback=None) -> dict
     return await executor.ainvoke(payload, config=config)
 
 
+# ─── Rate limiting ───────────────────────────────────────────────────
+# Prevents overwhelming the Groq API. Each session is limited to
+# MAX_REQUESTS_PER_WINDOW concurrent requests.
+_RATE_LIMIT_LOCKS: dict[str, asyncio.Semaphore] = {}
+MAX_REQUESTS_PER_WINDOW = 3  # max 3 concurrent agent runs per session
+
+
+def _get_rate_limiter(session_id: str) -> asyncio.Semaphore:
+    if session_id not in _RATE_LIMIT_LOCKS:
+        _RATE_LIMIT_LOCKS[session_id] = asyncio.Semaphore(MAX_REQUESTS_PER_WINDOW)
+    return _RATE_LIMIT_LOCKS[session_id]
+
+
 async def run_agent(session_id: str, message: str, context: str = "", callback=None) -> dict:
     logger.info(f"Agent run started: session_id={session_id}, message={message[:50]}...")
 
-    executor = _build_executor(session_id)
+    executor = _get_or_create_executor(session_id)
 
     input_text = message
     if context:
         input_text = f"Previous conversation summary:\n{context}\n\nCurrent question: {message}"
 
+    # Acquire rate limit slot
+    limiter = _get_rate_limiter(session_id)
+
     try:
-        result = await asyncio.wait_for(
-            _invoke(executor, {"input": input_text}, callback=callback),
-            timeout=AGENT_TIMEOUT_SECONDS,
-        )
-        logger.info(
-            f"Agent run completed: session_id={session_id}, "
-            f"steps={len(result.get('intermediate_steps', []))}"
-        )
-        return result
+        async with limiter:
+            result = await asyncio.wait_for(
+                _invoke(executor, {"input": input_text}, callback=callback),
+                timeout=AGENT_TIMEOUT_SECONDS,
+            )
+            logger.info(
+                f"Agent run completed: session_id={session_id}, "
+                f"steps={len(result.get('intermediate_steps', []))}"
+            )
+            return result
 
     except asyncio.TimeoutError:
         logger.error(f"Agent timed out after {AGENT_TIMEOUT_SECONDS}s: session_id={session_id}")
@@ -188,7 +235,7 @@ async def run_agent(session_id: str, message: str, context: str = "", callback=N
 
     except groq.APIStatusError as e:
         if e.status_code == 413:
-            logger.error(f"Token limit exceeded: session_id={session_id}, tokens requested by prompt too large")
+            logger.error(f"Token limit exceeded: session_id={session_id}")
             return {
                 "output": (
                     "Request exceeds the model's token limit. "

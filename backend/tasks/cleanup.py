@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy import delete, select
 
@@ -6,6 +6,7 @@ from ..db import get_db
 from ..db.models import Chart, Message, ToolRun
 from ..db.models import Session as SessionModel
 from ..logger import get_logger
+from ..utils.time import utcnow
 
 logger = get_logger(__name__)
 
@@ -17,7 +18,7 @@ async def cleanup_expired_sessions() -> int:
     """
     async with get_db() as db:
         result = await db.execute(
-            select(SessionModel).where(SessionModel.expires_at < datetime.utcnow())
+            select(SessionModel).where(SessionModel.expires_at < utcnow())
         )
         expired = result.scalars().all()
         if not expired:
@@ -33,7 +34,7 @@ async def cleanup_expired_sessions() -> int:
         await db.execute(delete(Chart).where(Chart.session_id.in_(session_ids)))
 
         await db.execute(
-            delete(SessionModel).where(SessionModel.expires_at < datetime.utcnow())
+            delete(SessionModel).where(SessionModel.expires_at < utcnow())
         )
 
         await db.commit()
@@ -48,8 +49,8 @@ async def cleanup_old_messages(days: int = 30) -> int:
 
     Returns the number of messages deleted.
     """
-    cutoff = datetime.utcnow() - timedelta(days=days)
-    
+    cutoff = utcnow() - timedelta(days=days)
+
     async with get_db() as db:
         result = await db.execute(select(Message).where(Message.created_at < cutoff))
         old_messages = result.scalars().all()

@@ -12,7 +12,7 @@ async def run_pca(session_id: Optional[str] = None, columns: list[str] | None = 
     if err:
         return err
     try:
-        return ml.perform_pca(df, columns=columns, n_components=n_components)
+        return await ml.perform_pca(df, columns=columns, n_components=n_components)
     except ValueError as e:
         return {"error": str(e)}
 
@@ -24,7 +24,7 @@ async def run_kmeans(session_id: Optional[str] = None, columns: list[str] | None
     if err:
         return err
     try:
-        return ml.perform_clustering(df, columns=columns, n_clusters=n_clusters)
+        return await ml.perform_clustering(df, columns=columns, n_clusters=n_clusters)
     except ValueError as e:
         return {"error": str(e)}
 
@@ -36,7 +36,7 @@ async def detect_anomalies(session_id: Optional[str] = None, columns: list[str] 
     if err:
         return err
     try:
-        return ml.detect_anomalies(df, columns=columns, contamination=contamination)
+        return await ml.detect_anomalies(df, columns=columns, contamination=contamination)
     except Exception as e:
         return {"error": str(e)}
 
@@ -56,7 +56,7 @@ async def run_regression(
     if err:
         return err
     try:
-        return ml.train_regression_model(df, target_column, feature_columns=feature_columns, test_size=test_size)
+        return await ml.train_regression_model(df, target_column, feature_columns=feature_columns, test_size=test_size)
     except ValueError as e:
         return {"error": str(e)}
 
@@ -76,6 +76,6 @@ async def run_classification(
     if err:
         return err
     try:
-        return ml.train_classification_model(df, target_column, feature_columns=feature_columns, test_size=test_size)
+        return await ml.train_classification_model(df, target_column, feature_columns=feature_columns, test_size=test_size)
     except ValueError as e:
         return {"error": str(e)}
