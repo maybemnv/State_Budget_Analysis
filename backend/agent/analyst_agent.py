@@ -60,6 +60,15 @@ Rules:
 - Include a generate_chart_spec call whenever a chart would aid understanding.
 - Report tool errors clearly; do not fabricate data.
 
+Response style:
+- Be concise. Answer in 1-3 sentences maximum.
+- Lead with the key finding or number.
+- Do NOT list every column or repeat dataset shape unless asked.
+- Do NOT explain basic statistics unless specifically asked.
+- Do NOT ask follow-up questions in your answer — just answer.
+- Use bullet points only when listing 3+ distinct items.
+- Skip phrases like "The dataset has been described" or "Would you like to explore" — just state facts.
+
 Use this format exactly:
 Question: the input question
 Thought: reasoning and which tool to call next
@@ -160,19 +169,6 @@ async def run_agent(session_id: str, message: str, context: str = "", callback=N
             "intermediate_steps": [],
         }
 
-    except groq.APIStatusError as e:
-        if e.status_code == 413:
-            logger.error(f"Token limit exceeded: session_id={session_id}, tokens requested by prompt too large")
-            return {
-                "output": (
-                    "Request exceeds the model's token limit. "
-                    "Try a more specific question or upload a smaller dataset."
-                ),
-                "intermediate_steps": [],
-            }
-        logger.exception(f"Groq API error (HTTP {e.status_code}): session_id={session_id}")
-        return {"output": f"API error (HTTP {e.status_code}): {e}", "intermediate_steps": []}
-
     except groq.RateLimitError as e:
         if _is_token_limit_error(e):
             logger.error(f"Token limit exceeded (rate_limit): session_id={session_id}")
@@ -189,6 +185,19 @@ async def run_agent(session_id: str, message: str, context: str = "", callback=N
     except groq.APIConnectionError:
         logger.error(f"Connection to Groq API failed: session_id={session_id}")
         return {"output": "Could not connect to the AI service. Please try again.", "intermediate_steps": []}
+
+    except groq.APIStatusError as e:
+        if e.status_code == 413:
+            logger.error(f"Token limit exceeded: session_id={session_id}, tokens requested by prompt too large")
+            return {
+                "output": (
+                    "Request exceeds the model's token limit. "
+                    "Try a more specific question or upload a smaller dataset."
+                ),
+                "intermediate_steps": [],
+            }
+        logger.exception(f"Groq API error (HTTP {e.status_code}): session_id={session_id}")
+        return {"output": f"API error (HTTP {e.status_code}): {e}", "intermediate_steps": []}
 
     except OutputParserException as e:
         logger.error(f"Agent parse error: session_id={session_id}, error={e}")

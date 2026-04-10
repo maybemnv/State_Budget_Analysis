@@ -10,7 +10,7 @@ import { BackendStatusIndicator } from "@/components/ui/BackendStatusIndicator"
 import { useWebSocket } from "@/hooks/useWebSocket"
 import { useWorkspaceStore } from "@/lib/store"
 import type { AgentState, VegaLiteSpec } from "@/lib/types"
-import { ArrowRight, Command, Sparkles } from "lucide-react"
+import { ArrowUp, Sparkles } from "lucide-react"
 
 interface AgentChatProps {
   sessionId: string
@@ -45,22 +45,19 @@ const SUGGESTIONS = [
 
 const now = () => new Date().toLocaleTimeString("en-US", { hour12: false })
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
-
-// Maximum turns to keep in memory — prevents memory leaks in long conversations
 const MAX_TURNS = 50
 
 export function AgentChat({ sessionId, onChartSpec, onTimelineStep }: AgentChatProps) {
   const [input, setInput] = useState("")
   const [turns, setTurns] = useState<Turn[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const viewportRef = useRef<HTMLDivElement>(null)
   const isSendingRef = useRef(false)
+  const shouldAutoScrollRef = useRef(true)
 
-  // Zustand store — shared state
   const agentState = useWorkspaceStore((s) => s.agentState)
   const setAgentState = useWorkspaceStore((s) => s.setAgentState)
 
-  // Helpers to mutate the latest agent turn — using functional updates to avoid stale closures
   const updateLatestAgentTurn = useCallback((updater: (turn: Turn) => Turn) => {
     setTurns((prev) => {
       const idx = [...prev].reverse().findIndex((t) => t.role === "agent")
@@ -135,36 +132,41 @@ export function AgentChat({ sessionId, onChartSpec, onTimelineStep }: AgentChatP
       setTimeout(() => setAgentState("idle"), 2000)
     },
     onDone: () => setAgentState("idle"),
-    onDisconnect: () => {
-      // Don't set error state immediately — the hook tracks reconnection
-    },
   })
 
-  // Auto-scroll to bottom on new turns
+  // Auto-scroll to bottom on new turns (only if user hasn't scrolled up)
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [turns])
-
-  // Keyboard shortcut: Cmd+K for command palette (placeholder)
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        inputRef.current?.focus()
+    if (shouldAutoScrollRef.current && viewportRef.current) {
+      const viewport = viewportRef.current
+      const scrollContainer = viewport.querySelector("[data-radix-scroll-area-viewport]")
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight
       }
     }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
+  }, [turns])
+
+  // Detect manual scroll (user scrolling up = disable auto-scroll)
+  useEffect(() => {
+    const viewport = viewportRef.current?.querySelector("[data-radix-scroll-area-viewport]")
+    if (!viewport) return
+
+    const handleScroll = () => {
+      const el = viewport as HTMLElement
+      const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+      shouldAutoScrollRef.current = isNearBottom
+    }
+
+    viewport.addEventListener("scroll", handleScroll, { passive: true })
+    return () => viewport.removeEventListener("scroll", handleScroll)
   }, [])
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault()
-    // Prevent double-sending
     if (!input.trim() || !isConnected || isSendingRef.current) return
 
     isSendingRef.current = true
+    shouldAutoScrollRef.current = true
     setTurns((prev) => {
-      // Trim old turns to prevent memory leaks
       const trimmed = prev.length >= MAX_TURNS ? prev.slice(-MAX_TURNS + 1) : prev
       return [...trimmed, { id: uid(), role: "user", content: input.trim(), thinking: false }]
     })
@@ -172,7 +174,6 @@ export function AgentChat({ sessionId, onChartSpec, onTimelineStep }: AgentChatP
     sendMessage({ message: input.trim() })
     setInput("")
 
-    // Release lock after a short cooldown
     setTimeout(() => {
       isSendingRef.current = false
     }, 300)
@@ -183,7 +184,14 @@ export function AgentChat({ sessionId, onChartSpec, onTimelineStep }: AgentChatP
     inputRef.current?.focus()
   }, [])
 
-  // Connection status message
+  const scrollToBottom = useCallback(() => {
+    shouldAutoScrollRef.current = true
+    const viewport = viewportRef.current?.querySelector("[data-radix-scroll-area-viewport]")
+    if (viewport) {
+      (viewport as HTMLElement).scrollTo({ top: (viewport as HTMLElement).scrollHeight, behavior: "smooth" })
+    }
+  }, [])
+
   const connectionStatus = isReconnecting
     ? `Reconnecting… (${reconnectAttempts}/10)`
     : wsError
@@ -193,14 +201,14 @@ export function AgentChat({ sessionId, onChartSpec, onTimelineStep }: AgentChatP
         : null
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-2.5 sm:px-5" role="banner" aria-label="Agent chat header">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5 sm:px-5" role="banner">
         <div className="flex items-center gap-3">
           <AgentAvatar state={agentState} />
           <div>
             <p className="text-sm font-semibold text-text-primary">DataLens Agent</p>
-            <p className="text-[11px] text-text-muted" aria-live="polite" aria-atomic="true">
+            <p className="text-[11px] text-text-muted" aria-live="polite">
               {agentState === "thinking" && "Reasoning…"}
               {agentState === "executing" && "Running analysis…"}
               {agentState === "done" && "Ready"}
@@ -213,139 +221,149 @@ export function AgentChat({ sessionId, onChartSpec, onTimelineStep }: AgentChatP
       </div>
 
       {/* Connection error banner */}
-      {!isConnected && !wsError && turns.length === 0 && (
-        <div className="mx-4 mt-3 rounded border border-warning/20 bg-warning/5 px-4 py-3 text-center" role="alert">
-          <p className="text-sm text-warning">Connecting to agent backend…</p>
-          <p className="mt-1 text-xs text-text-muted">Ensure backend is running at http://localhost:8000</p>
+      {connectionStatus && turns.length === 0 && (
+        <div className={cn(
+          "mx-4 mt-3 shrink-0 rounded border px-4 py-3 text-center text-sm",
+          wsError ? "border-error/20 bg-error/5 text-error" : "border-warning/20 bg-warning/5 text-warning"
+        )} role="alert">
+          {connectionStatus}
         </div>
       )}
 
-      {/* Persistent connection error */}
-      {wsError && turns.length === 0 && (
-        <div className="mx-4 mt-3 rounded border border-error/20 bg-error/5 px-4 py-3 text-center" role="alert">
-          <p className="text-sm text-error">Connection failed</p>
-          <p className="mt-1 text-xs text-text-muted">{wsError}</p>
-        </div>
-      )}
-
-      {/* Turns */}
-      <ScrollArea className="flex-1 px-4 py-5 sm:px-5" aria-label="Chat messages" role="log" aria-live="polite">
-        <div className="space-y-6">
-          {/* Empty state */}
-          {turns.length === 0 && isConnected && (
-            <div className="flex flex-col items-center justify-center py-14 text-center">
-              <Sparkles className="mb-4 h-10 w-10 text-primary/30" aria-hidden="true" />
-              <h3 className="mb-1 text-base font-semibold text-text-primary">Ask anything about your data</h3>
-              <p className="mb-6 text-sm text-text-muted">The agent reasons step-by-step and shows its work.</p>
-              <div className="flex flex-wrap justify-center gap-2" role="list" aria-label="Suggested questions">
-                {SUGGESTIONS.map((q) => (
-                  <button
-                    key={q}
-                    onClick={() => handleSuggestionClick(q)}
-                    className="rounded-full border border-border px-3.5 py-1.5 text-xs text-text-secondary transition-colors hover:border-border-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    role="listitem"
-                    aria-label={`Ask: ${q}`}
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Turn rendering */}
-          {turns.map((turn) => {
-            if (turn.role === "user") {
-              return (
-                <div key={turn.id} className="flex justify-end">
-                  <div className="max-w-[78%] rounded-lg bg-primary px-4 py-2.5 text-sm text-primary-foreground">
-                    {turn.content}
-                  </div>
+      {/* Chat messages — scrollable area */}
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <ScrollArea className="h-full" ref={viewportRef}>
+          <div className="px-4 py-4 sm:px-5 sm:py-5">
+            {/* Empty state */}
+            {turns.length === 0 && isConnected && (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <Sparkles className="mb-4 h-12 w-12 text-primary/20" aria-hidden="true" />
+                <h3 className="mb-1.5 text-lg font-semibold text-text-primary">
+                  Ask anything about your data
+                </h3>
+                <p className="mb-8 text-sm text-text-muted max-w-sm">
+                  The agent reasons step-by-step and shows its work.
+                </p>
+                <div className="flex flex-wrap justify-center gap-2" role="list">
+                  {SUGGESTIONS.map((q) => (
+                    <button
+                      key={q}
+                      onClick={() => handleSuggestionClick(q)}
+                      className="rounded-full border border-border bg-surface px-4 py-2 text-xs text-text-secondary transition-colors hover:border-border-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      role="listitem"
+                    >
+                      {q}
+                    </button>
+                  ))}
                 </div>
-              )
-            }
+              </div>
+            )}
 
-            // Agent turn
-            return (
-              <div key={turn.id} className="space-y-3">
-                {/* Thinking block — collapsed when done */}
-                {(turn.thoughts?.length ?? 0) > 0 && (
-                  <ThinkingBlock
-                    thoughts={turn.thoughts!}
-                    isLive={turn.thinking}
-                  />
-                )}
+            {/* Turn rendering */}
+            <div className="space-y-6">
+              {turns.map((turn) => {
+                if (turn.role === "user") {
+                  return (
+                    <div key={turn.id} className="flex justify-end">
+                      <div className="max-w-[80%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm text-primary-foreground shadow-sm">
+                        {turn.content}
+                      </div>
+                    </div>
+                  )
+                }
 
-                {/* Tool calls */}
-                {turn.toolCalls?.map((tc, i) => (
-                  <ToolCallCard
-                    key={tc.id}
-                    tool={tc.tool}
-                    args={tc.args}
-                    result={tc.result}
-                    status={tc.done ? "completed" : "executing"}
-                    index={i}
-                  />
-                ))}
+                return (
+                  <div key={turn.id} className="space-y-3">
+                    {/* Thinking block */}
+                    {(turn.thoughts?.length ?? 0) > 0 && (
+                      <ThinkingBlock
+                        thoughts={turn.thoughts!}
+                        isLive={turn.thinking}
+                      />
+                    )}
 
-                {/* Final answer */}
-                {turn.answer && (
-                  <div className={cn(
-                    "overflow-hidden rounded-lg border-l-2 bg-elevated animate-fade-in-up",
-                    turn.answer.startsWith("Error:")
-                      ? "border-error bg-error/5"
-                      : "border-success"
-                  )}>
-                    {!turn.answer.startsWith("Error:") && (
-                      <div className="flex items-center gap-2 border-b border-border px-4 py-2">
-                        <div className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
-                        <span className="text-[10px] font-semibold uppercase tracking-widest text-success">Answer</span>
+                    {/* Tool calls */}
+                    {turn.toolCalls?.map((tc, i) => (
+                      <ToolCallCard
+                        key={tc.id}
+                        tool={tc.tool}
+                        args={tc.args}
+                        result={tc.result}
+                        status={tc.done ? "completed" : "executing"}
+                        index={i}
+                      />
+                    ))}
+
+                    {/* Final answer */}
+                    {turn.answer && (
+                      <div className={cn(
+                        "overflow-hidden rounded-lg border animate-fade-in-up",
+                        turn.answer.startsWith("Error:")
+                          ? "border-error/30 bg-error/5"
+                          : "border-success/30 bg-success/[0.03]"
+                      )}>
+                        {!turn.answer.startsWith("Error:") && (
+                          <div className="flex items-center gap-2 border-b border-border/50 px-4 py-2">
+                            <div className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-success">
+                              Answer
+                            </span>
+                          </div>
+                        )}
+                        <div className={cn(
+                          "px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap",
+                          turn.answer.startsWith("Error:") ? "text-error" : "text-text-primary"
+                        )}>
+                          {turn.answer}
+                        </div>
                       </div>
                     )}
-                    <div className={cn(
-                      "px-4 py-3 text-sm leading-relaxed",
-                      turn.answer.startsWith("Error:") ? "text-error" : "text-text-primary"
-                    )}>
-                      {turn.answer}
-                    </div>
                   </div>
-                )}
-              </div>
-            )
-          })}
+                )
+              })}
+            </div>
+          </div>
+        </ScrollArea>
+      </div>
 
-          <div ref={scrollRef} />
-        </div>
-      </ScrollArea>
-
-      {/* Input */}
-      <form onSubmit={handleSubmit} className="border-t border-border px-4 pb-4 pt-3 sm:px-5 sm:pb-5 sm:pt-4" role="form" aria-label="Send a message">
-        <div className="flex gap-2">
-          <input
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={isConnected ? "Type your question…" : "Connecting…"}
-            disabled={!isConnected}
-            className="flex-1 border-0 border-b-2 border-border bg-transparent py-2 text-sm text-text-primary placeholder:text-text-disabled outline-none transition-colors focus:border-primary disabled:opacity-50"
-            aria-label="Message input"
-            aria-describedby="chat-hint"
-            autoComplete="off"
-          />
+      {/* Scroll to bottom button (appears when user scrolls up) */}
+      {!shouldAutoScrollRef.current && turns.length > 0 && (
+        <div className="absolute bottom-24 right-6 z-10">
           <button
-            type="submit"
-            disabled={!input.trim() || !isConnected}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            aria-label="Send message"
+            onClick={scrollToBottom}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-surface border border-border text-text-muted shadow-lg transition-colors hover:text-text-primary"
+            aria-label="Scroll to bottom"
           >
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            <ArrowUp className="h-4 w-4 rotate-180" />
           </button>
         </div>
-        <div id="chat-hint" className="mt-2 flex items-center gap-1 text-[11px] text-text-disabled">
-          <Command className="h-3 w-3" aria-hidden="true" />
-          <span>K to focus input</span>
-        </div>
-      </form>
+      )}
+
+      {/* Input — sticky at bottom */}
+      <div className="shrink-0 border-t border-border bg-background px-4 pb-4 pt-3 sm:px-5 sm:pb-5 sm:pt-4">
+        <form onSubmit={handleSubmit} role="form" aria-label="Send a message">
+          <div className="flex items-end gap-2">
+            <input
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={isConnected ? "Ask about your data…" : "Connecting…"}
+              disabled={!isConnected}
+              className="flex-1 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text-primary placeholder:text-text-disabled outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/20 disabled:opacity-50"
+              aria-label="Message input"
+              autoComplete="off"
+            />
+            <button
+              type="submit"
+              disabled={!input.trim() || !isConnected}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              aria-label="Send message"
+            >
+              <ArrowUp className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }

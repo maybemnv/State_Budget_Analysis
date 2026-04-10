@@ -217,12 +217,20 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
 
                 await callback._send({"type": "done"})
 
-        except WebSocketDisconnect:
+        except (WebSocketDisconnect, RuntimeError) as e:
+            if isinstance(e, RuntimeError) and "accept" not in str(e) and "disconnect" not in str(e).lower():
+                logger.exception(f"WebSocket error: session_id={session_id}, error={e}")
+                try:
+                    await callback._send({"type": "error", "message": f"Server error: {str(e)}"})
+                except Exception:
+                    pass
+                return
+
             logger.info(f"WebSocket disconnected: session_id={session_id}")
             try:
                 await redis.unregister_ws(session_id)
-            except Exception as e:
-                logger.warning(f"Failed to unregister WebSocket from Redis for session {session_id}: {e}")
+            except Exception as redis_e:
+                logger.warning(f"Failed to unregister WebSocket from Redis for session {session_id}: {redis_e}")
         except Exception as e:
             logger.exception(f"WebSocket error: session_id={session_id}, error={e}")
             try:

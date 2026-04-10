@@ -7,7 +7,7 @@ import { AgentChat } from "@/components/agent/AgentChat"
 import { VizPanel } from "@/components/layout/VizPanel"
 import { useWorkspaceStore } from "@/lib/store"
 import type { VegaLiteSpec } from "@/lib/types"
-import { PanelLeftClose, PanelLeftOpen, X } from "lucide-react"
+import { PanelLeftClose, PanelLeftOpen, X, ChartBar } from "lucide-react"
 
 interface ThreePanelLayoutProps {
   sessionId: string
@@ -22,8 +22,8 @@ interface ThreePanelLayoutProps {
 
 /**
  * ThreePanelLayout — responsive workspace layout.
- * - Desktop (>1024px): 3-column layout with sidebar, chat, viz panel
- * - Tablet (768-1024px): 2-column, sidebar collapses, viz panel overlays
+ * - Desktop (>1280px): 3-column layout with sidebar, chat, viz panel
+ * - Tablet (768-1280px): 2-column, sidebar collapses, viz panel overlays
  * - Mobile (<768px): single column, both panels overlay
  */
 export function ThreePanelLayout({ sessionId, sessionInfo }: ThreePanelLayoutProps) {
@@ -34,6 +34,7 @@ export function ThreePanelLayout({ sessionId, sessionInfo }: ThreePanelLayoutPro
   const sidebarOpen = useWorkspaceStore((s) => s.sidebarOpen)
   const setSidebarOpen = useWorkspaceStore((s) => s.setSidebarOpen)
   const vizPanelFullscreen = useWorkspaceStore((s) => s.vizPanelFullscreen)
+  const vizPanelOpen = useWorkspaceStore((s) => s.vizPanelView === "2d")
 
   // Set session info on mount
   useState(() => {
@@ -73,12 +74,11 @@ export function ThreePanelLayout({ sessionId, sessionInfo }: ThreePanelLayoutPro
           "fixed inset-y-0 left-0 z-40 flex h-full w-[280px] flex-shrink-0 flex-col bg-surface transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 lg:w-[260px]",
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:w-0 lg:overflow-hidden"
         )}
-        aria-label="Session sidebar"
       >
         <Sidebar />
       </aside>
 
-      {/* Toggle sidebar button — visible on all sizes */}
+      {/* Toggle sidebar button */}
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}
         className={cn(
@@ -99,7 +99,7 @@ export function ThreePanelLayout({ sessionId, sessionInfo }: ThreePanelLayoutPro
         />
 
         {/* Timeline bar */}
-        <div className="border-t border-border bg-surface px-4 py-2">
+        <div className="shrink-0 border-t border-border bg-surface px-4 py-2">
           <div className="flex items-center gap-1 overflow-x-auto" role="list" aria-label="Agent timeline">
             {timelineSteps.length === 0 ? (
               <span className="text-[11px] text-text-disabled">
@@ -140,7 +140,7 @@ export function ThreePanelLayout({ sessionId, sessionInfo }: ThreePanelLayoutPro
         </div>
       </main>
 
-      {/* Viz Panel — responsive: overlay on mobile, fixed on desktop */}
+      {/* Viz Panel — toggleable on desktop, overlay on mobile */}
       {vizPanelFullscreen ? (
         <div className="fixed inset-0 z-50 bg-elevated">
           <button
@@ -153,12 +153,41 @@ export function ThreePanelLayout({ sessionId, sessionInfo }: ThreePanelLayoutPro
           <VizPanel />
         </div>
       ) : (
-        <aside
-          className="hidden h-full flex-shrink-0 bg-elevated xl:block xl:w-[380px]"
-          aria-label="Visualization panel"
-        >
-          <VizPanel />
-        </aside>
+        <>
+          {/* Toggle viz panel button — always visible */}
+          <button
+            onClick={() => useWorkspaceStore.getState().setVizPanelView(vizPanelOpen ? "3d" : "2d")}
+            className={cn(
+              "fixed bottom-24 right-6 z-20 flex h-10 w-10 items-center justify-center rounded-full shadow-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+              vizPanelOpen
+                ? "bg-primary text-primary-foreground hover:bg-primary-hover"
+                : "bg-surface border border-border text-text-muted hover:text-text-primary"
+            )}
+            aria-label={vizPanelOpen ? "Hide visualization panel" : "Show visualization panel"}
+            title="Toggle visualization panel"
+          >
+            <ChartBar className="h-4 w-4" />
+          </button>
+
+          {/* Viz Panel — desktop only, slide-in panel */}
+          <aside
+            className={cn(
+              "fixed inset-y-0 right-0 z-40 flex h-full w-[400px] flex-shrink-0 flex-col bg-elevated transition-transform duration-200 ease-in-out",
+              vizPanelOpen ? "translate-x-0" : "translate-x-full"
+            )}
+          >
+            <VizPanel />
+          </aside>
+
+          {/* Overlay when viz panel is open on smaller screens */}
+          {vizPanelOpen && (
+            <div
+              className="fixed inset-0 z-30 bg-background/40 backdrop-blur-sm xl:hidden"
+              onClick={() => useWorkspaceStore.getState().setVizPanelView("3d")}
+              aria-hidden="true"
+            />
+          )}
+        </>
       )}
     </div>
   )
