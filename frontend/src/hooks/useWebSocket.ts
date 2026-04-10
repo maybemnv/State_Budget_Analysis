@@ -1,10 +1,9 @@
 "use client"
 
-import { useEffect, useRef, useCallback, useState } from "react"
+import { useEffect, useRef, useState, useCallback } from "react"
 import {
   createWebSocketClient,
   type WSMessage,
-  type CreateWebSocketClientOptions as ApiOptions,
 } from "@/lib/api"
 
 export interface UseWebSocketOptions {
@@ -38,7 +37,10 @@ export interface UseWebSocketReturn {
 /**
  * useWebSocket — Hook for real-time communication with the DataLens backend.
  * Uses WebSocket streaming for agent responses.
- * Features: auto-reconnection with backoff, connection state tracking.
+ *
+ * Key design: callbacks are stored in refs so the connect function is stable.
+ * This prevents the infinite connect/disconnect loop caused by React re-renders
+ * creating new callback references on every render.
  */
 export function useWebSocket({
   sessionId,
@@ -62,49 +64,12 @@ export function useWebSocket({
   const [error, setError] = useState<string | null>(null)
   const [messages, setMessages] = useState<WSMessage[]>([])
 
-  const connect = useCallback(() => {
-    if (clientRef.current) {
-      clientRef.current.close()
-    }
-
-    setIsConnecting(true)
-    setError(null)
-
-    clientRef.current = createWebSocketClient({
-      sessionId,
-      maxReconnectAttempts,
-      onMessage: (msg) => {
-        setMessages((prev) => [...prev, msg])
-        onMessage?.(msg)
-      },
-      onThought,
-      onToolCall,
-      onToolResult,
-      onChart,
-      onAnswer,
-      onError: (msg) => {
-        setError(msg)
-        onError?.(msg)
-      },
-      onDone: () => {
-        onDone?.()
-      },
-      onConnect: () => {
-        setIsConnected(true)
-        setIsConnecting(false)
-        setIsReconnecting(false)
-        setReconnectAttempts(0)
-        onConnect?.()
-      },
-      onDisconnect: () => {
-        setIsConnected(false)
-        setIsReconnecting(true)
-        onDisconnect?.()
-      },
-    })
-  }, [
-    sessionId,
-    maxReconnectAttempts,
+  // ─── Stable callback refs ────────────────────────────────────────────
+  // Store callbacks in refs so the connect function below is stable
+  // (only depends on sessionId). Without this, every re-render creates
+  // new callback references → connect changes → useEffect cleanup →
+  // WS close → reconnect → infinite loop.
+  const callbacksRef = useRef({
     onMessage,
     onThought,
     onToolCall,
@@ -115,15 +80,74 @@ export function useWebSocket({
     onDone,
     onConnect,
     onDisconnect,
-  ])
+  })
+
+  // Keep refs up to date on every render
+  useEffect(() => {
+    callbacksRef.current = {
+      onMessage,
+      onThought,
+      onToolCall,
+      onToolResult,
+      onChart,
+      onAnswer,
+      onError,
+      onDone,
+      onConnect,
+      onDisconnect,
+    }
+  })
+
+  // ─── Stable connect function ─────────────────────────────────────────
+  // Only re-creates when sessionId or maxReconnectAttempts changes.
+  const connect = useRef(false) // dummy dep to avoid recreating; we use sessionId directly
 
   useEffect(() => {
-    connect()
+    // Cleanup previous connection
+    if (clientRef.current) {
+      clientRef.current.close()
+    }
+
+    setIsConnecting(true)
+    setIsReconnecting(false)
+    setError(null)
+
+    clientRef.current = createWebSocketClient({
+      sessionId,
+      maxReconnectAttempts,
+      onMessage: (msg) => {
+        setMessages((prev) => [...prev, msg])
+        callbacksRef.current.onMessage?.(msg)
+      },
+      onThought: (content) => callbacksRef.current.onThought?.(content),
+      onToolCall: (tool, args) => callbacksRef.current.onToolCall?.(tool, args),
+      onToolResult: (tool, result) => callbacksRef.current.onToolResult?.(tool, result),
+      onChart: (spec) => callbacksRef.current.onChart?.(spec),
+      onAnswer: (content) => callbacksRef.current.onAnswer?.(content),
+      onError: (msg) => {
+        setError(msg)
+        callbacksRef.current.onError?.(msg)
+      },
+      onDone: () => callbacksRef.current.onDone?.(),
+      onConnect: () => {
+        setIsConnected(true)
+        setIsConnecting(false)
+        setIsReconnecting(false)
+        setReconnectAttempts(0)
+        callbacksRef.current.onConnect?.()
+      },
+      onDisconnect: () => {
+        setIsConnected(false)
+        setIsReconnecting(true)
+        callbacksRef.current.onDisconnect?.()
+      },
+    })
 
     return () => {
       clientRef.current?.close()
     }
-  }, [connect])
+    // Only re-run when sessionId or maxReconnectAttempts change
+  }, [sessionId, maxReconnectAttempts])
 
   const sendMessage = useCallback(
     (message: string | Record<string, unknown>) => {
