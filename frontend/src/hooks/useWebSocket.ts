@@ -1,7 +1,11 @@
 "use client"
 
 import { useEffect, useRef, useCallback, useState } from "react"
-import { createWebSocketClient, type WSMessage, type UseWebSocketOptions as ApiOptions } from "@/lib/api"
+import {
+  createWebSocketClient,
+  type WSMessage,
+  type CreateWebSocketClientOptions as ApiOptions,
+} from "@/lib/api"
 
 export interface UseWebSocketOptions {
   sessionId: string
@@ -16,19 +20,25 @@ export interface UseWebSocketOptions {
   onDone?: () => void
   onConnect?: () => void
   onDisconnect?: () => void
+  /** Maximum reconnection attempts. Default: 10 */
+  maxReconnectAttempts?: number
 }
 
 export interface UseWebSocketReturn {
   sendMessage: (message: string | Record<string, unknown>) => void
   isConnected: boolean
   isConnecting: boolean
+  isReconnecting: boolean
+  reconnectAttempts: number
   error: string | null
   messages: WSMessage[]
+  disconnect: () => void
 }
 
 /**
  * useWebSocket — Hook for real-time communication with the DataLens backend.
  * Uses WebSocket streaming for agent responses.
+ * Features: auto-reconnection with backoff, connection state tracking.
  */
 export function useWebSocket({
   sessionId,
@@ -42,10 +52,13 @@ export function useWebSocket({
   onDone,
   onConnect,
   onDisconnect,
+  maxReconnectAttempts = 10,
 }: UseWebSocketOptions): UseWebSocketReturn {
   const clientRef = useRef<ReturnType<typeof createWebSocketClient> | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [isConnecting, setIsConnecting] = useState(true)
+  const [isReconnecting, setIsReconnecting] = useState(false)
+  const [reconnectAttempts, setReconnectAttempts] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [messages, setMessages] = useState<WSMessage[]>([])
 
@@ -59,6 +72,7 @@ export function useWebSocket({
 
     clientRef.current = createWebSocketClient({
       sessionId,
+      maxReconnectAttempts,
       onMessage: (msg) => {
         setMessages((prev) => [...prev, msg])
         onMessage?.(msg)
@@ -78,15 +92,30 @@ export function useWebSocket({
       onConnect: () => {
         setIsConnected(true)
         setIsConnecting(false)
+        setIsReconnecting(false)
+        setReconnectAttempts(0)
         onConnect?.()
       },
       onDisconnect: () => {
         setIsConnected(false)
-        setIsConnecting(false)
+        setIsReconnecting(true)
         onDisconnect?.()
       },
     })
-  }, [sessionId, onMessage, onThought, onToolCall, onToolResult, onChart, onAnswer, onError, onDone, onConnect, onDisconnect])
+  }, [
+    sessionId,
+    maxReconnectAttempts,
+    onMessage,
+    onThought,
+    onToolCall,
+    onToolResult,
+    onChart,
+    onAnswer,
+    onError,
+    onDone,
+    onConnect,
+    onDisconnect,
+  ])
 
   useEffect(() => {
     connect()
@@ -103,11 +132,18 @@ export function useWebSocket({
     []
   )
 
+  const disconnect = useCallback(() => {
+    clientRef.current?.close()
+  }, [])
+
   return {
     sendMessage,
     isConnected,
     isConnecting,
+    isReconnecting,
+    reconnectAttempts,
     error,
     messages,
+    disconnect,
   }
 }

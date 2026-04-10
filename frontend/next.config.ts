@@ -18,7 +18,6 @@ if (fs.existsSync(envPath)) {
 const nextConfig: NextConfig = {
   /* config options here */
   output: "standalone",
-  reactCompiler: true,
   env: env,
 };
 

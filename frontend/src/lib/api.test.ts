@@ -1,146 +1,235 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-// Mock global fetch
-const mockFetch = vi.fn()
-vi.stubGlobal('fetch', mockFetch)
+import { api, createWebSocketClient, API_BASE_URL, WS_BASE_URL, validateFile, MAX_UPLOAD_SIZE } from '@/lib/api'
 
-import { api, createWebSocketClient, API_BASE_URL, WS_BASE_URL } from '@/lib/api'
+// ─── Mock XMLHttpRequest ─────────────────────────────────────────────
+function mockXHR() {
+  const xhr = {
+    open: vi.fn(),
+    send: vi.fn(),
+    abort: vi.fn(),
+    upload: { addEventListener: vi.fn() },
+    addEventListener: vi.fn((event: string, handler: () => void) => {
+      if (event === 'load') xhr._loadHandler = handler
+      if (event === 'error') xhr._errorHandler = handler
+    }),
+    // Internal handlers for test control
+    _loadHandler: null as (() => void) | null,
+    _errorHandler: null as (() => void) | null,
+    status: 200,
+    responseText: '{}',
+  }
 
-describe('api', () => {
+  vi.stubGlobal('XMLHttpRequest', vi.fn(() => xhr))
+  return xhr
+}
+
+describe('validateFile', () => {
+  it('accepts a valid CSV file under 100 MB', () => {
+    const file = new File(['a,b,c\n1,2,3'], 'data.csv', { type: 'text/csv' })
+    expect(() => validateFile(file)).not.toThrow()
+  })
+
+  it('accepts xlsx files', () => {
+    const file = new File(['binary'], 'data.xlsx', { type: 'application/vnd.openxmlformats' })
+    expect(() => validateFile(file)).not.toThrow()
+  })
+
+  it('rejects unsupported extensions', () => {
+    const file = new File(['data'], 'data.json', { type: 'application/json' })
+    expect(() => validateFile(file)).toThrow(/Unsupported format/)
+  })
+
+  it('rejects files larger than 100 MB', () => {
+    // Create a fake file with size > 100 MB
+    const file = new File([new ArrayBuffer(MAX_UPLOAD_SIZE + 1)], 'huge.csv', { type: 'text/csv' })
+    expect(() => validateFile(file)).toThrow(/File too large/)
+  })
+})
+
+describe('api.upload', () => {
+  let xhr: ReturnType<typeof mockXHR>
+
   beforeEach(() => {
-    mockFetch.mockClear()
+    xhr = mockXHR()
   })
 
-  describe('upload', () => {
-    it('uploads a file successfully', async () => {
-      const mockResponse = {
-        session_id: 'test-123',
-        filename: 'test.csv',
-        rows: 100,
-        columns: 5,
-        column_names: ['a', 'b', 'c', 'd', 'e'],
-      }
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
-      })
-
-      const file = new File(['test'], 'test.csv', { type: 'text/csv' })
-      const result = await api.upload(file)
-
-      expect(result).toEqual(mockResponse)
-      expect(mockFetch).toHaveBeenCalledWith(
-        `${API_BASE_URL}/upload`,
-        expect.objectContaining({
-          method: 'POST',
-        })
-      )
-    })
-
-    it('throws error on failed upload', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        json: async () => ({ detail: 'Invalid file' }),
-      })
-
-      const file = new File(['test'], 'test.csv', { type: 'text/csv' })
-      await expect(api.upload(file)).rejects.toThrow('Invalid file')
-    })
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
-  describe('getSessionInfo', () => {
-    it('fetches session info successfully', async () => {
-      const mockResponse = {
-        session_id: 'test-123',
-        filename: 'test.csv',
-        shape: [100, 5],
-        columns: ['a', 'b', 'c'],
-        dtypes: { a: 'float64', b: 'object', c: 'int64' },
-      }
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
-      })
+  it('uploads a file successfully', async () => {
+    const mockResponse = {
+      session_id: 'test-123',
+      filename: 'test.csv',
+      rows: 100,
+      columns: 5,
+      column_names: ['a', 'b', 'c', 'd', 'e'],
+    }
+    xhr.status = 200
+    xhr.responseText = JSON.stringify(mockResponse)
 
-      const result = await api.getSessionInfo('test-123')
-      expect(result).toEqual(mockResponse)
-    })
+    const file = new File(['test'], 'test.csv', { type: 'text/csv' })
+    const promise = api.upload(file)
 
-    it('throws error when session not found', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-      })
+    // Simulate XHR load
+    xhr._loadHandler?.()
 
-      await expect(api.getSessionInfo('nonexistent')).rejects.toThrow('Session not found')
-    })
+    const result = await promise
+    expect(result).toEqual(mockResponse)
   })
 
-  describe('deleteSession', () => {
-    it('deletes session successfully', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-      })
+  it('throws error on failed upload', async () => {
+    xhr.status = 400
+    xhr.responseText = JSON.stringify({ detail: 'Invalid file' })
 
-      await expect(api.deleteSession('test-123')).resolves.not.toThrow()
-    })
+    const file = new File(['test'], 'test.csv', { type: 'text/csv' })
+    const promise = api.upload(file)
 
-    it('handles 404 gracefully', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-      })
+    xhr._loadHandler?.()
 
-      await expect(api.deleteSession('nonexistent')).resolves.not.toThrow()
-    })
+    await expect(promise).rejects.toThrow('Invalid file')
   })
 
-  describe('chat', () => {
-    it('sends chat message successfully', async () => {
-      const mockResponse = {
-        answer: 'Test answer',
-        has_error: false,
-        chart_spec: null,
-        steps: [],
-      }
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
-      })
+  it('calls onProgress callback during upload', async () => {
+    const onProgress = vi.fn()
+    xhr.status = 200
+    xhr.responseText = JSON.stringify({ session_id: 'test' })
 
-      const result = await api.chat('test-123', 'Hello')
-      expect(result).toEqual(mockResponse)
-    })
+    const file = new File(['test'], 'test.csv', { type: 'text/csv' })
+    const promise = api.upload(file, onProgress)
 
-    it('throws error on chat failure', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-      })
+    // Get the progress listener
+    const progressListener = xhr.upload.addEventListener.mock.calls[0]?.[1]
+    expect(progressListener).toBeDefined()
 
-      await expect(api.chat('nonexistent', 'Hello')).rejects.toThrow('Session not found')
-    })
+    // Simulate progress event
+    progressListener?.({ loaded: 50, total: 100, lengthComputable: true })
+    expect(onProgress).toHaveBeenCalledWith(50)
+
+    // Complete the upload
+    xhr._loadHandler?.()
+    await promise
   })
 
-  describe('health', () => {
-    it('returns health status', async () => {
-      const mockResponse = { status: 'ok', version: '1.0.0' }
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
-      })
+  it('rejects on network error', async () => {
+    const file = new File(['test'], 'test.csv', { type: 'text/csv' })
+    const promise = api.upload(file)
 
-      const result = await api.health()
-      expect(result).toEqual(mockResponse)
+    // Simulate XHR error
+    xhr._errorHandler?.()
+
+    await expect(promise).rejects.toThrow('Network error during upload')
+  })
+})
+
+describe('api.getSessionInfo', () => {
+  it('fetches session info successfully', async () => {
+    const mockResponse = {
+      session_id: 'test-123',
+      filename: 'test.csv',
+      shape: [100, 5],
+      columns: ['a', 'b', 'c'],
+      dtypes: { a: 'float64', b: 'object', c: 'int64' },
+    }
+
+    const mockFetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockResponse,
     })
+    vi.stubGlobal('fetch', mockFetch)
 
-    it('throws error on health check failure', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-      })
+    const result = await api.getSessionInfo('test-123')
+    expect(result).toEqual(mockResponse)
 
-      await expect(api.health()).rejects.toThrow('Health check failed')
+    vi.unstubAllGlobals()
+  })
+
+  it('throws error when session not found', async () => {
+    const mockFetch = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 404,
     })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await expect(api.getSessionInfo('nonexistent')).rejects.toThrow('Session not found')
+
+    vi.unstubAllGlobals()
+  })
+})
+
+describe('api.deleteSession', () => {
+  it('deletes session successfully', async () => {
+    const mockFetch = vi.fn().mockResolvedValueOnce({ ok: true })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await expect(api.deleteSession('test-123')).resolves.not.toThrow()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('handles 404 gracefully', async () => {
+    const mockFetch = vi.fn().mockResolvedValueOnce({ ok: false, status: 404 })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await expect(api.deleteSession('nonexistent')).resolves.not.toThrow()
+
+    vi.unstubAllGlobals()
+  })
+})
+
+describe('api.chat', () => {
+  it('sends chat message successfully', async () => {
+    const mockResponse = {
+      answer: 'Test answer',
+      has_error: false,
+      chart_spec: null,
+      steps: [],
+    }
+    const mockFetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockResponse,
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const result = await api.chat('test-123', 'Hello')
+    expect(result).toEqual(mockResponse)
+
+    vi.unstubAllGlobals()
+  })
+
+  it('throws error on chat failure', async () => {
+    const mockFetch = vi.fn().mockResolvedValueOnce({ ok: false, status: 404 })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await expect(api.chat('nonexistent', 'Hello')).rejects.toThrow('Session not found')
+
+    vi.unstubAllGlobals()
+  })
+})
+
+describe('api.health', () => {
+  it('returns health status', async () => {
+    const mockResponse = { status: 'ok', version: '1.0.0' }
+    const mockFetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockResponse,
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const result = await api.health()
+    expect(result).toEqual(mockResponse)
+
+    vi.unstubAllGlobals()
+  })
+
+  it('throws error on health check failure', async () => {
+    const mockFetch = vi.fn().mockResolvedValueOnce({ ok: false })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await expect(api.health()).rejects.toThrow('Health check failed')
+
+    vi.unstubAllGlobals()
   })
 })
 
@@ -200,14 +289,12 @@ describe('WebSocket client', () => {
   })
 
   it('sends message correctly when WebSocket is open', () => {
-    // Create client and set readyState to OPEN
     const client = createWebSocketClient({
       sessionId: 'test-123',
     })
-    
-    // Verify WebSocket is created in OPEN state
-    expect(mockWsInstance.readyState).toBe(1) // WebSocket.OPEN
-    
+
+    expect(mockWsInstance.readyState).toBe(1)
+
     client.send('Hello world')
 
     expect(mockWsInstance.send).toHaveBeenCalledWith(
@@ -282,5 +369,21 @@ describe('WebSocket client', () => {
     client.close()
 
     expect(mockWsInstance.close).toHaveBeenCalled()
+  })
+
+  it('handles pong messages silently', () => {
+    const onMessage = vi.fn()
+
+    createWebSocketClient({
+      sessionId: 'test-123',
+      onMessage,
+    })
+
+    mockWsInstance.onmessage?.({
+      data: JSON.stringify({ type: 'pong' }),
+    })
+
+    // onMessage should NOT be called for pong (it's filtered out)
+    expect(onMessage).not.toHaveBeenCalled()
   })
 })

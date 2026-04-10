@@ -1,5 +1,4 @@
 // API client for DataLens backend
-// Base URLs - configure via environment variables
 // Base URLs - configure via environment variables or detect from window.location
 const getOrigin = () => {
   if (typeof window === 'undefined') return 'http://localhost:8000'
@@ -8,6 +7,33 @@ const getOrigin = () => {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || getOrigin()
 const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || getOrigin().replace('http', 'ws')
+
+// Maximum upload file size: 100 MB
+export const MAX_UPLOAD_SIZE = 100 * 1024 * 1024
+
+// Supported file extensions
+export const SUPPORTED_EXTENSIONS = ['.csv', '.xlsx', '.xls', '.parquet']
+
+/**
+ * Validate a file before upload — checks extension and size.
+ * Throws a descriptive Error if validation fails.
+ */
+export function validateFile(file: File): void {
+  const ext = '.' + file.name.split('.').pop()?.toLowerCase()
+
+  if (!SUPPORTED_EXTENSIONS.includes(ext)) {
+    throw new Error(
+      `Unsupported format "${ext}". Supported: ${SUPPORTED_EXTENSIONS.join(', ')}`
+    )
+  }
+
+  if (file.size > MAX_UPLOAD_SIZE) {
+    const sizeMB = (file.size / (1024 * 1024)).toFixed(1)
+    throw new Error(
+      `File too large (${sizeMB} MB). Maximum size is 100 MB.`
+    )
+  }
+}
 
 // Types
 export interface UploadResponse {
@@ -43,23 +69,58 @@ export interface ChatResponse {
 // API Client
 export const api = {
   /**
-   * Upload a dataset file
+   * Upload a dataset file with real progress tracking via XMLHttpRequest.
+   * @param file - The file to upload
+   * @param onProgress - Callback with progress percentage (0-100)
    */
-  async upload(file: File): Promise<UploadResponse> {
-    const formData = new FormData()
-    formData.append('file', file)
+  upload(
+    file: File,
+    onProgress?: (percentage: number) => void
+  ): Promise<UploadResponse> {
+    // Validate before starting
+    validateFile(file)
 
-    const res = await fetch(`${API_BASE_URL}/upload`, {
-      method: 'POST',
-      body: formData,
+    return new Promise((resolve, reject) => {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const xhr = new XMLHttpRequest()
+
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable && onProgress) {
+          const percentage = Math.round((event.loaded / event.total) * 100)
+          onProgress(percentage)
+        }
+      })
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText))
+          } catch {
+            reject(new Error('Invalid response from server'))
+          }
+        } else {
+          try {
+            const error = JSON.parse(xhr.responseText)
+            reject(new Error(error.detail || `Upload failed (${xhr.status})`))
+          } catch {
+            reject(new Error(`Upload failed (${xhr.status})`))
+          }
+        }
+      })
+
+      xhr.addEventListener('error', () => {
+        reject(new Error('Network error during upload'))
+      })
+
+      xhr.addEventListener('abort', () => {
+        reject(new Error('Upload was cancelled'))
+      })
+
+      xhr.open('POST', `${API_BASE_URL}/upload`)
+      xhr.send(formData)
     })
-
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({ detail: 'Upload failed' }))
-      throw new Error(error.detail || 'Upload failed')
-    }
-
-    return res.json()
   },
 
   /**
@@ -123,9 +184,10 @@ export const api = {
   },
 }
 
-// WebSocket client
+// ─── WebSocket client with reconnection & heartbeat ──────────────────
+
 export interface WSMessage {
-  type: 'thought' | 'tool_call' | 'tool_result' | 'chart' | 'answer' | 'error' | 'done' | 'ping'
+  type: 'thought' | 'tool_call' | 'tool_result' | 'chart' | 'answer' | 'error' | 'done' | 'ping' | 'pong'
   content?: string
   tool?: string
   args?: Record<string, unknown>
@@ -134,7 +196,7 @@ export interface WSMessage {
   message?: string
 }
 
-export interface UseWebSocketOptions {
+export interface CreateWebSocketClientOptions {
   sessionId: string
   onMessage?: (message: WSMessage) => void
   onThought?: (content: string) => void
@@ -146,8 +208,24 @@ export interface UseWebSocketOptions {
   onDone?: () => void
   onConnect?: () => void
   onDisconnect?: () => void
+  /** Maximum reconnection attempts (0 = no reconnection). Default: 10 */
+  maxReconnectAttempts?: number
+  /** Base reconnect delay in ms. Default: 1000 */
+  reconnectBaseDelay?: number
 }
 
+export interface WebSocketClient {
+  ws: WebSocket | null
+  send: (message: string | Record<string, unknown>) => void
+  close: () => void
+}
+
+/**
+ * createWebSocketClient — WebSocket client with:
+ * - Exponential backoff reconnection
+ * - Heartbeat/ping-pong for dead connection detection
+ * - Proper error propagation
+ */
 export function createWebSocketClient({
   sessionId,
   onMessage,
@@ -160,91 +238,180 @@ export function createWebSocketClient({
   onDone,
   onConnect,
   onDisconnect,
-}: UseWebSocketOptions) {
+  maxReconnectAttempts = 10,
+  reconnectBaseDelay = 1000,
+}: CreateWebSocketClientOptions): WebSocketClient {
   const wsUrl = `${WS_BASE_URL}/ws/${sessionId}`
-  console.log('Connecting to WebSocket:', wsUrl)
-  
-  const ws = new WebSocket(wsUrl)
+  console.log('[WS] Connecting:', wsUrl)
 
-  ws.onopen = () => {
-    console.log('WebSocket connected')
-    onConnect?.()
-  }
+  let ws: WebSocket | null = null
+  let reconnectAttempts = 0
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  let closed = false // user-initiated close, don't reconnect
 
-  ws.onclose = (event) => {
-    console.log('WebSocket closed:', event.code, event.reason)
-    
-    // Provide helpful error messages
-    if (event.code === 4004) {
-      console.error('Session not found on backend. The session may have expired or been deleted.')
-    } else if (event.code === 1006) {
-      console.error('WebSocket connection lost. Check if backend server is running.')
-    }
-    
-    onDisconnect?.()
-  }
-
-  ws.onerror = (error) => {
-    console.error('WebSocket error:', {
-      readyState: ws.readyState,
-      url: ws.url,
-      error
-    })
-    // Don't call onError here - it will be called by onclose with proper info
-  }
-
-  ws.onmessage = (event) => {
-    try {
-      const message: WSMessage = JSON.parse(event.data)
-      console.log('WS message received:', message.type)
-      onMessage?.(message)
-
-      // Dispatch to specific handlers
-      switch (message.type) {
-        case 'thought':
-          onThought?.(message.content || '')
-          break
-        case 'tool_call':
-          onToolCall?.(message.tool || '', message.args || {})
-          break
-        case 'tool_result':
-          onToolResult?.(message.tool || '', message.result)
-          break
-        case 'chart':
-          onChart?.(message.spec || {})
-          break
-        case 'answer':
-          onAnswer?.(message.content || '')
-          break
-        case 'error':
-          onError?.(message.message || 'Unknown error')
-          break
-        case 'done':
-          onDone?.()
-          break
-        case 'ping':
-          break
+  /** Start heartbeat: send ping every 30s, detect dead connections */
+  const startHeartbeat = (socket: WebSocket) => {
+    stopHeartbeat()
+    heartbeatTimer = setInterval(() => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'ping' }))
+        // If no pong within 10s, consider dead
+        setTimeout(() => {
+          if (socket.readyState === WebSocket.OPEN) {
+            console.warn('[WS] Heartbeat timeout — closing connection')
+            socket.close(4000, 'Heartbeat timeout')
+          }
+        }, 10_000)
       }
-    } catch (e) {
-      console.error('Failed to parse WebSocket message:', e)
+    }, 30_000)
+  }
+
+  const stopHeartbeat = () => {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer)
+      heartbeatTimer = null
     }
   }
+
+  /** Calculate reconnect delay with exponential backoff + jitter */
+  const getReconnectDelay = () => {
+    const exp = Math.min(reconnectAttempts, 6) // cap at 2^6 = 64s
+    const base = reconnectBaseDelay * Math.pow(2, exp)
+    const jitter = Math.random() * 1000 // add 0-1s jitter to avoid thundering herd
+    return Math.min(base + jitter, 60_000) // max 60s
+  }
+
+  /** Attempt to reconnect with backoff */
+  const scheduleReconnect = () => {
+    if (closed) return
+    if (reconnectAttempts >= maxReconnectAttempts) {
+      console.error(`[WS] Max reconnection attempts (${maxReconnectAttempts}) reached`)
+      onError?.('Connection lost. Please refresh the page.')
+      onDisconnect?.()
+      return
+    }
+
+    reconnectAttempts++
+    const delay = getReconnectDelay()
+    console.log(`[WS] Reconnecting in ${Math.round(delay)}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})`)
+
+    reconnectTimer = setTimeout(() => {
+      console.log(`[WS] Reconnection attempt ${reconnectAttempts}`)
+      ws = createSocket()
+    }, delay)
+  }
+
+  /** Create the actual WebSocket and wire up handlers */
+  const createSocket = (): WebSocket => {
+    const socket = new WebSocket(wsUrl)
+
+    socket.onopen = () => {
+      console.log('[WS] Connected')
+      reconnectAttempts = 0 // reset on successful connection
+      startHeartbeat(socket)
+      onConnect?.()
+    }
+
+    socket.onclose = (event) => {
+      console.log('[WS] Closed:', event.code, event.reason)
+      stopHeartbeat()
+
+      if (event.code === 4004) {
+        console.error('[WS] Session not found on backend')
+        onError?.('Session not found. It may have expired or been deleted.')
+      } else if (event.code === 1006) {
+        console.error('[WS] Connection lost abnormally')
+      } else if (event.code === 4000) {
+        // heartbeat timeout — will reconnect
+        console.warn('[WS] Heartbeat timeout detected')
+      }
+
+      if (!closed) {
+        onDisconnect?.()
+        scheduleReconnect()
+      }
+    }
+
+    socket.onerror = (error) => {
+      console.error('[WS] Error:', {
+        readyState: socket.readyState,
+        url: socket.url,
+        error,
+      })
+    }
+
+    socket.onmessage = (event) => {
+      try {
+        const message: WSMessage = JSON.parse(event.data)
+
+        // Handle pong response (heartbeat)
+        if (message.type === 'pong') {
+          return // heartbeat confirmed, no action needed
+        }
+
+        console.log('[WS] Message:', message.type)
+        onMessage?.(message)
+
+        switch (message.type) {
+          case 'thought':
+            onThought?.(message.content || '')
+            break
+          case 'tool_call':
+            onToolCall?.(message.tool || '', message.args || {})
+            break
+          case 'tool_result':
+            onToolResult?.(message.tool || '', message.result)
+            break
+          case 'chart':
+            onChart?.(message.spec || {})
+            break
+          case 'answer':
+            onAnswer?.(message.content || '')
+            break
+          case 'error':
+            onError?.(message.message || 'Unknown error')
+            break
+          case 'done':
+            onDone?.()
+            break
+          case 'ping':
+            // Backend pinging us — respond with pong
+            socket.send(JSON.stringify({ type: 'pong' }))
+            break
+        }
+      } catch (e) {
+        console.error('[WS] Failed to parse message:', e)
+      }
+    }
+
+    return socket
+  }
+
+  // Initial connection
+  ws = createSocket()
 
   return {
-    ws,
+    get ws() {
+      return ws
+    },
     send: (message: string | Record<string, unknown>) => {
-      const payload = typeof message === 'string' 
-        ? JSON.stringify({ message }) 
+      const payload = typeof message === 'string'
+        ? JSON.stringify({ message })
         : JSON.stringify(message)
-      
-      if (ws.readyState === WebSocket.OPEN) {
+
+      if (ws?.readyState === WebSocket.OPEN) {
         ws.send(payload)
       } else {
-        console.warn('WebSocket not connected, readyState:', ws.readyState)
+        console.warn('[WS] Not connected (readyState:', ws?.readyState, ')')
       }
     },
     close: () => {
-      ws.close()
+      closed = true
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      stopHeartbeat()
+      ws?.close()
+      ws = null
     },
   }
 }
