@@ -129,7 +129,7 @@ async def get_session(session_id: str, db: AsyncSession) -> Optional[dict]:
     if record is None:
         return None
 
-    if record.expires_at is not None and record.expires_at.replace(tzinfo=None) < utcnow().replace(tzinfo=None):
+    if record.expires_at is not None and record.expires_at < utcnow():
         logger.warning(f"Session expired: {resolved_id}")
         return None
 

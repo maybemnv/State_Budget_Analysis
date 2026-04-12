@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy import Column, String, Integer, DateTime, JSON, Text, Index
 from sqlalchemy.orm import declarative_base
 
@@ -6,8 +6,11 @@ Base = declarative_base()
 
 
 def _utcnow() -> datetime:
-    """Timezone-aware UTC now for model defaults."""
-    return datetime.now(timezone.utc)
+    """Timezone-naive UTC now for model defaults.
+
+    Matches the database columns defined as TIMESTAMP WITHOUT TIME ZONE.
+    """
+    return datetime.utcnow()
 
 
 class Session(Base):
