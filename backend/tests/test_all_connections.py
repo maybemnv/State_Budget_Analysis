@@ -1,17 +1,17 @@
-"""Comprehensive configuration and connection test"""
+"""Comprehensive configuration and connection test (manual diagnostic - not pytest)"""
 import asyncio
 import sys
 from pathlib import Path
+import pytest
 
-# Add backend directory to path
 backend_path = str(Path(__file__).parent.parent)
 sys.path.insert(0, backend_path)
 
-from config import settings
+from config import settings  # noqa: E402
 
 
+@pytest.mark.skip(reason="Manual diagnostic test - requires live services")
 def test_configuration():
-    """Test that all configuration is loaded from .env securely"""
     print("=" * 60)
     print("CONFIGURATION VALIDATION")
     print("=" * 60)
@@ -19,23 +19,20 @@ def test_configuration():
     print("\n✓ Safe Configuration Summary:")
     config = settings.get_safe_config_summary()
 
-    # Print database config
-    print(f"\n  Database:")
-    print(f"    Host: {config['database']['host']}:{config['database']['port']}")
-    print(f"    User: {config['database']['user']}")
-    print(f"    Database: {config['database']['database']}")
-    print(f"    Driver: {config['database']['driver']}")
+    print("\n  Database:")
+    print("    Host: {}:{}".format(config['database']['host'], config['database']['port']))
+    print("    User: {}".format(config['database']['user']))
+    print("    Database: {}".format(config['database']['database']))
+    print("    Driver: {}".format(config['database']['driver']))
 
-    # Print Redis config
-    print(f"\n  Redis:")
-    print(f"    Type: {config['redis']['type']}")
-    print(f"    URL: {config['redis']['url']}")
-    print(f"    Configured: {config['redis']['configured']}")
+    print("\n  Redis:")
+    print("    Type: {}".format(config['redis']['type']))
+    print("    URL: {}".format(config['redis']['url']))
+    print("    Configured: {}".format(config['redis']['configured']))
 
-    # Print app config
-    print(f"\n  Application:")
-    print(f"    Environment: {config['environment']}")
-    print(f"    Debug: {config['debug']}")
+    print("\n  Application:")
+    print("    Environment: {}".format(config['environment']))
+    print("    Debug: {}".format(config['debug']))
     print(f"    Model: {config['model']}")
     print(f"    CORS Origins: {config['cors_origins']}")
     print(f"    Max Upload: {config['max_upload_mb']}MB")
@@ -84,6 +81,7 @@ def test_configuration():
     return True
 
 
+@pytest.mark.skip(reason="Manual diagnostic test - requires live services")
 async def test_all_connections():
     """Test all database and Redis connections"""
     print("\n" + "=" * 60)
@@ -125,7 +123,7 @@ async def test_all_connections():
     print("\nTest 2: Redis")
     try:
         if settings.is_upstash_redis:
-            print(f"  Using Upstash Redis...")
+            print("  Using Upstash Redis...")
             try:
                 from upstash_redis.asyncio import Redis
 
@@ -151,7 +149,7 @@ async def test_all_connections():
                 print("  ⚠ upstash-redis not installed, trying standard redis")
                 raise ImportError("upstash-redis not available")
         else:
-            print(f"  Using standard Redis...")
+            print("  Using standard Redis...")
             import redis.asyncio as redis
 
             client = redis.from_url(settings.redis_url)

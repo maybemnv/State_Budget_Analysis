@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client"
 
 import { useEffect, useRef, useState, useCallback } from "react"
@@ -100,6 +101,7 @@ export function useWebSocket({
 
   // ─── Stable connect function ─────────────────────────────────────────
   // Only re-creates when sessionId or maxReconnectAttempts changes.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const connect = useRef(false) // dummy dep to avoid recreating; we use sessionId directly
 
   useEffect(() => {

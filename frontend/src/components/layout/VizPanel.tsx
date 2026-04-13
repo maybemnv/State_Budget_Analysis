@@ -3,7 +3,6 @@
 import { useCallback, useMemo } from "react"
 import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Skeleton } from "@/components/ui/skeleton"
 import { Maximize2, Minimize2, ImageDown, BarChart3, ScatterChart, Wifi, WifiOff } from "lucide-react"
 import { useWorkspaceStore } from "@/lib/store"
 import type { VegaLiteSpec } from "@/lib/types"

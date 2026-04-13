@@ -1,6 +1,5 @@
 from typing import Optional
 import pandas as pd
-import numpy as np
 
 def descriptive_stats(df: pd.DataFrame, columns: Optional[list[str]] = None) -> dict:
     cols = columns if columns is not None else df.select_dtypes(include="number").columns.tolist()

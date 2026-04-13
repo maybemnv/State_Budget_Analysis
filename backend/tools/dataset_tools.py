@@ -1,7 +1,7 @@
 from langchain_core.tools import tool
 import pandas as pd
 from ..schemas import DescribeDatasetInput, GenerateChartSpecInput
-from ..session import get_df, get_session
+from ..session import get_session
 from ..db.database import get_db
 from ..analyzers.statistical import missing_values_summary
 from .guards import require_df

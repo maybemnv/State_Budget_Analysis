@@ -1,7 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextRequest } from 'next/server'
 
-// Mock the API functions
 vi.mock('@/lib/api', () => ({
   api: {
     health: vi.fn(),

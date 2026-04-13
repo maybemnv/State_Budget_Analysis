@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { Upload, FileText, CheckCircle2, AlertCircle, ArrowRight, X } from "lucide-react"
+import { Upload, FileText, CheckCircle2, AlertCircle, X } from "lucide-react"
 import { api, validateFile, MAX_UPLOAD_SIZE } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"

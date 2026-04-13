@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 describe('useWebSocket hook', () => {
-  let mockWebSocket: any
+  let mockWebSocket: Record<string, unknown>
 
   beforeEach(() => {
     mockWebSocket = {
@@ -23,8 +23,8 @@ describe('useWebSocket hook', () => {
   })
 
   it('initializes WebSocket connection with session ID', async () => {
-    const { useWebSocket } = await import('@/hooks/useWebSocket')
-    
+    await import('@/hooks/useWebSocket')
+
     // The hook will be tested in component tests
     expect(true).toBe(true)
   })

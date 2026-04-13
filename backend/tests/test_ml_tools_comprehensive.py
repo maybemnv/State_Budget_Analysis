@@ -2,7 +2,7 @@
 import pytest
 import pandas as pd
 import numpy as np
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 
 from backend.tools import ml_tools
 

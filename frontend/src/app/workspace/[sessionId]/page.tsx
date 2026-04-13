@@ -72,7 +72,7 @@ export default function WorkspacePage() {
     setAutoInsightOpen(false)
   }, [setAutoInsightOpen])
 
-  const handleDigDeeper = useCallback((_insight: { title: string; body: string }) => {
+  const handleDigDeeper = useCallback(() => {
     setAutoInsightOpen(false)
   }, [setAutoInsightOpen])
 

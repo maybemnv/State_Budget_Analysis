@@ -3,7 +3,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 from typing import ClassVar, Literal
 from urllib.parse import quote_plus
-import os
 
 
 class Settings(BaseSettings):

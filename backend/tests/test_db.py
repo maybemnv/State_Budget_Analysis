@@ -3,12 +3,11 @@ import asyncio
 import sys
 from pathlib import Path
 
-# Add backend directory to path
 backend_path = str(Path(__file__).parent.parent)
 sys.path.insert(0, backend_path)
 
-from config import settings
-import asyncpg
+from config import settings  # noqa: E402
+import asyncpg  # noqa: E402
 
 
 async def test_db():
@@ -17,7 +16,7 @@ async def test_db():
     print("POSTGRESQL CONNECTION TEST")
     print("=" * 60)
     
-    print(f"\nDatabase Configuration:")
+    print("\nDatabase Configuration:")
     print(f"  Host: {settings.db_host}:{settings.db_port}")
     print(f"  User: {settings.db_user[:3]}***")
     print(f"  Database: {settings.db_name}")

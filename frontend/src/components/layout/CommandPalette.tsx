@@ -10,7 +10,6 @@ import {
   Command,
   Sparkles,
   BarChart3,
-  Table,
   TrendingUp,
   PieChart,
   Filter,
@@ -213,7 +212,7 @@ export function CommandPalette({ isOpen, onClose, onCommand }: CommandPalettePro
                   {category}
                 </div>
                 <div className="space-y-0.5">
-                  {cmds.map((cmd, i) => {
+                  {cmds.map((cmd) => {
                     const globalIndex = filteredCommands.indexOf(cmd)
                     const isSelected = globalIndex === selectedIndex
 
@@ -285,6 +284,7 @@ export function CommandPalette({ isOpen, onClose, onCommand }: CommandPalettePro
 
 // Hook to use command palette globally
 let globalOpenCallback: (() => void) | null = null
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 let globalCloseCallback: (() => void) | null = null
 
 export function useCommandPalette(onCommand?: (command: string) => void) {
@@ -327,7 +327,7 @@ export function CommandPaletteProvider({
   children: React.ReactNode
   onCommand?: (command: string) => void
 }) {
-  const { isOpen, CommandPalette: Palette } = useCommandPalette(onCommand)
+  const { CommandPalette: Palette } = useCommandPalette(onCommand)
 
   // Trigger open on Cmd+K from anywhere
   useEffect(() => {

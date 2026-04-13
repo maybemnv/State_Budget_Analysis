@@ -3,11 +3,10 @@ import asyncio
 import sys
 from pathlib import Path
 
-# Add backend directory to path
 backend_path = str(Path(__file__).parent.parent)
 sys.path.insert(0, backend_path)
 
-from config import settings
+from config import settings  # noqa: E402
 
 
 async def test_redis_connection():
@@ -18,7 +17,7 @@ async def test_redis_connection():
 
     # Show configuration (safely - no credentials exposed)
     redis_info = settings.get_redis_info()
-    print(f"\nRedis Configuration:")
+    print("\nRedis Configuration:")
     print(f"  Type: {redis_info['type']}")
     print(f"  URL: {redis_info['url']}")
     print(f"  Configured: {redis_info['configured']}")
@@ -117,7 +116,7 @@ async def test_redis_connection():
     except Exception as e:
         print(f"\n✗ ERROR: {str(e)}")
         import traceback
-        print(f"\nDetailed traceback:")
+        print("\nDetailed traceback:")
         print(traceback.format_exc())
         print("\n" + "=" * 60)
         print("REDIS TEST FAILED ✗")

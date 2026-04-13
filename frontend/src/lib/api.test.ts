@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-import { api, createWebSocketClient, API_BASE_URL, WS_BASE_URL, validateFile, MAX_UPLOAD_SIZE } from '@/lib/api'
+import { api, createWebSocketClient, WS_BASE_URL, validateFile, MAX_UPLOAD_SIZE } from '@/lib/api'
 
 // ─── Mock XMLHttpRequest ─────────────────────────────────────────────
 function mockXHR() {

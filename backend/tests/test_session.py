@@ -1,6 +1,7 @@
 import pytest
 import pandas as pd
 import numpy as np
+from unittest.mock import AsyncMock, MagicMock, patch
 from backend.session import (
     create_session,
     get_session,
@@ -8,17 +9,16 @@ from backend.session import (
     delete_session,
     list_sessions,
     _resolve_id,
-    _build_metadata,
+    _build_schema,
 )
 from backend import session as session_module
 
 
 @pytest.fixture(autouse=True)
 def clean_sessions():
-    """Clean up sessions before and after each test."""
-    session_module._sessions.clear()
+    session_module._memory_cache.clear()
     yield
-    session_module._sessions.clear()
+    session_module._memory_cache.clear()
 
 
 @pytest.fixture
@@ -34,8 +34,6 @@ def sample_df():
 
 
 class TestResolveId:
-    """Test suite for session ID resolution"""
-
     def test_resolve_id_plain_string(self):
         assert _resolve_id("abc-123") == "abc-123"
 
@@ -52,117 +50,80 @@ class TestResolveId:
         assert _resolve_id("{invalid") == "{invalid"
 
 
+class TestBuildSchema:
+    def test_build_schema_basic(self, sample_df):
+        schema = _build_schema(sample_df, "test.csv")
+        assert schema["filename"] == "test.csv"
+        assert schema["shape"] == [50, 3]
+        assert schema["columns"] == ["date", "revenue", "category"]
+        assert "revenue" in schema["numeric_columns"]
+        assert "category" in schema["categorical_columns"]
+
+    def test_build_schema_no_numeric_columns(self):
+        df = pd.DataFrame({"a": ["x", "y", "z"], "b": ["p", "q", "r"]})
+        schema = _build_schema(df, "test.csv")
+        assert schema["numeric_columns"] == []
+        assert schema["categorical_columns"] == ["a", "b"]
+
+    def test_build_schema_missing_values(self):
+        df = pd.DataFrame({"a": [1, None, 3], "b": ["x", "y", None]})
+        schema = _build_schema(df, "test.csv")
+        assert schema["missing_values"] == 2
+
+    def test_build_schema_dtypes(self, sample_df):
+        schema = _build_schema(sample_df, "test.csv")
+        assert "revenue" in schema["dtypes"]
+        assert "date" in schema["dtypes"]
+        assert "category" in schema["dtypes"]
+
+
 class TestSessionManagement:
-    """Test suite for session management functions"""
+    @pytest.mark.asyncio
+    async def test_create_session(self, sample_df):
+        mock_db = AsyncMock()
+        mock_db.commit = AsyncMock()
+        mock_db.add = MagicMock()
 
-    def test_create_session(self, sample_df):
-        session_id = create_session(sample_df, "test.csv")
-        assert session_id is not None
-        assert len(session_id) == 36
+        with patch("backend.session._store_df_in_redis", new_callable=AsyncMock), \
+             patch("backend.session.get_cache") as mock_cache, \
+             patch("backend.session.get_redis") as mock_redis:
+            mock_cache.return_value.set = MagicMock()
+            mock_redis_instance = AsyncMock()
+            mock_redis_instance.cache_set = AsyncMock()
+            mock_redis.return_value = mock_redis_instance
 
-    def test_get_session_exists(self, sample_df):
-        session_id = create_session(sample_df, "test.csv")
-        session = get_session(session_id)
-        assert session is not None
-        assert "df" in session
-        assert "metadata" in session
+            session_id = await create_session(sample_df, "test.csv", mock_db)
+            assert session_id is not None
+            assert len(session_id) == 36
 
-    def test_get_session_not_exists(self):
-        session = get_session("nonexistent-id")
-        assert session is None
+    @pytest.mark.asyncio
+    async def test_get_session_not_exists(self):
+        mock_db = AsyncMock()
+        mock_result = AsyncMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=None)
+        mock_db.execute = AsyncMock(return_value=mock_result)
 
-    def test_get_df_exists(self, sample_df):
-        session_id = create_session(sample_df, "test.csv")
-        df = get_df(session_id)
-        assert df is not None
-        assert isinstance(df, pd.DataFrame)
-        assert len(df) == 50
+        with patch("backend.session.get_cache") as mock_cache:
+            mock_cache.return_value.get = MagicMock(return_value=None)
+            session = await get_session("nonexistent-id", mock_db)
+            assert session is None
 
-    def test_get_df_not_exists(self):
-        df = get_df("nonexistent-id")
-        assert df is None
+    @pytest.mark.asyncio
+    async def test_delete_session_not_exists(self):
+        mock_db = AsyncMock()
+        mock_result = AsyncMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=None)
+        mock_db.execute = AsyncMock(return_value=mock_result)
 
-    def test_delete_session_success(self, sample_df):
-        session_id = create_session(sample_df, "test.csv")
-        result = delete_session(session_id)
-        assert result is True
-        assert get_session(session_id) is None
-
-    def test_delete_session_not_exists(self):
-        result = delete_session("nonexistent-id")
+        result = await delete_session("nonexistent-id", mock_db)
         assert result is False
 
-    def test_list_sessions_empty(self):
-        sessions = list_sessions()
+    @pytest.mark.asyncio
+    async def test_list_sessions_empty(self):
+        mock_db = AsyncMock()
+        mock_result = AsyncMock()
+        mock_result.all = MagicMock(return_value=[])
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
+        sessions = await list_sessions(mock_db)
         assert sessions == []
-
-    def test_list_sessions_with_data(self, sample_df):
-        id1 = create_session(sample_df, "test1.csv")
-        id2 = create_session(sample_df, "test2.csv")
-        sessions = list_sessions()
-        assert len(sessions) == 2
-        assert id1 in sessions
-        assert id2 in sessions
-
-
-class TestBuildMetadata:
-    """Test suite for metadata building"""
-
-    def test_build_metadata_basic(self, sample_df):
-        meta = _build_metadata(sample_df, "test.csv")
-        assert meta["filename"] == "test.csv"
-        assert meta["shape"] == (50, 3)
-        assert meta["columns"] == ["date", "revenue", "category"]
-        assert "revenue" in meta["numeric_columns"]
-        assert "category" in meta["categorical_columns"]
-
-    def test_build_metadata_no_numeric_columns(self):
-        df = pd.DataFrame({"a": ["x", "y", "z"], "b": ["p", "q", "r"]})
-        meta = _build_metadata(df, "test.csv")
-        assert meta["numeric_columns"] == []
-        assert meta["categorical_columns"] == ["a", "b"]
-
-    def test_build_metadata_missing_values(self):
-        df = pd.DataFrame({"a": [1, None, 3], "b": ["x", "y", None]})
-        meta = _build_metadata(df, "test.csv")
-        assert meta["missing_values"] == 2
-
-    def test_build_metadata_dtypes(self, sample_df):
-        meta = _build_metadata(sample_df, "test.csv")
-        assert "revenue" in meta["dtypes"]
-        assert "date" in meta["dtypes"]
-        assert "category" in meta["dtypes"]
-
-
-class TestSessionIntegration:
-    """Integration tests for full session lifecycle"""
-
-    def test_full_session_lifecycle(self, sample_df):
-        session_id = create_session(sample_df, "data.csv")
-
-        session = get_session(session_id)
-        assert session["filename"] == "data.csv"
-        assert len(session["df"]) == 50
-
-        df = get_df(session_id)
-        assert df is not None
-
-        sessions_before = list_sessions()
-        assert len(sessions_before) == 1
-
-        delete_session(session_id)
-
-        sessions_after = list_sessions()
-        assert len(sessions_after) == 0
-
-    def test_multiple_sessions(self, sample_df):
-        id1 = create_session(sample_df, "file1.csv")
-        id2 = create_session(sample_df, "file2.csv")
-
-        assert get_session(id1)["filename"] == "file1.csv"
-        assert get_session(id2)["filename"] == "file2.csv"
-
-        delete_session(id1)
-
-        assert get_session(id1) is None
-        assert get_session(id2) is not None

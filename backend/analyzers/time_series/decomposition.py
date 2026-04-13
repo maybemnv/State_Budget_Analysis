@@ -1,6 +1,5 @@
 from typing import Optional
 import pandas as pd
-import numpy as np
 from statsmodels.tsa.seasonal import seasonal_decompose
 
 

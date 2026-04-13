@@ -1,7 +1,6 @@
 "use client"
 
-import { useRef, useMemo } from "react"
-import * as THREE from "three"
+import { useMemo } from "react"
 import { Html } from "@react-three/drei"
 
 interface Point {
@@ -30,8 +29,6 @@ export function PCAScatter3D({
   showLabels = false,
   colors = ["#FF6B35", "#00DCB4", "#9D4EDD", "#F59E0B", "#EF4444"],
 }: PCAScatter3DProps) {
-  const hoveredPointRef = useRef<number | null>(null)
-
   // Normalize points to fit in view
   const normalizedPoints = useMemo(() => {
     if (points.length === 0) return []

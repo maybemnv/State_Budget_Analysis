@@ -27,7 +27,7 @@ export function useBackendStatus() {
         if (!healthRes.ok) {
           throw new Error(`Health check failed: ${healthRes.status}`)
         }
-        const health = await healthRes.json()
+        const _health = await healthRes.json()
 
         // Check sessions endpoint
         const sessionsRes = await fetch(`${API_BASE_URL}/sessions`)

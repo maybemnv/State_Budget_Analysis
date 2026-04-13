@@ -1,6 +1,5 @@
-import pytest
 import json
-from backend.agent.output_parser import parse_output, AnalysisResult
+from backend.agent.output_parser import parse_output
 
 
 class TestOutputParser:

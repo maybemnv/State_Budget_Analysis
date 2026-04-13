@@ -1,7 +1,4 @@
-from typing import Optional
 import pandas as pd
-import numpy as np
-from .date_utils import parse_financial_year, extract_year_columns
 
 
 def clean_and_interpolate(series: pd.Series, method: str = "linear", limit: int = 5) -> pd.Series:

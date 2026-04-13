@@ -1,7 +1,6 @@
 import warnings
 import numpy as np
 import pandas as pd
-from typing import Tuple, Optional
 from statsmodels.tsa.stattools import adfuller, kpss
 
 warnings.filterwarnings("ignore")

@@ -9,7 +9,7 @@ import { ToolCallCard } from "./ToolCallCard"
 import { BackendStatusIndicator } from "@/components/ui/BackendStatusIndicator"
 import { useWebSocket } from "@/hooks/useWebSocket"
 import { useWorkspaceStore } from "@/lib/store"
-import type { AgentState, VegaLiteSpec } from "@/lib/types"
+import type { VegaLiteSpec } from "@/lib/types"
 import { ArrowUp, Sparkles } from "lucide-react"
 
 interface AgentChatProps {
@@ -50,6 +50,7 @@ const MAX_TURNS = 50
 export function AgentChat({ sessionId, onChartSpec, onTimelineStep }: AgentChatProps) {
   const [input, setInput] = useState("")
   const [turns, setTurns] = useState<Turn[]>([])
+  const [showScrollButton, setShowScrollButton] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const isSendingRef = useRef(false)
@@ -154,6 +155,7 @@ export function AgentChat({ sessionId, onChartSpec, onTimelineStep }: AgentChatP
       const el = viewport as HTMLElement
       const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
       shouldAutoScrollRef.current = isNearBottom
+      setShowScrollButton(!isNearBottom)
     }
 
     viewport.addEventListener("scroll", handleScroll, { passive: true })
@@ -166,6 +168,7 @@ export function AgentChat({ sessionId, onChartSpec, onTimelineStep }: AgentChatP
 
     isSendingRef.current = true
     shouldAutoScrollRef.current = true
+    setShowScrollButton(false)
     setTurns((prev) => {
       const trimmed = prev.length >= MAX_TURNS ? prev.slice(-MAX_TURNS + 1) : prev
       return [...trimmed, { id: uid(), role: "user", content: input.trim(), thinking: false }]
@@ -186,6 +189,7 @@ export function AgentChat({ sessionId, onChartSpec, onTimelineStep }: AgentChatP
 
   const scrollToBottom = useCallback(() => {
     shouldAutoScrollRef.current = true
+    setShowScrollButton(false)
     const viewport = viewportRef.current?.querySelector("[data-radix-scroll-area-viewport]")
     if (viewport) {
       (viewport as HTMLElement).scrollTo({ top: (viewport as HTMLElement).scrollHeight, behavior: "smooth" })
@@ -327,7 +331,7 @@ export function AgentChat({ sessionId, onChartSpec, onTimelineStep }: AgentChatP
       </div>
 
       {/* Scroll to bottom button (appears when user scrolls up) */}
-      {!shouldAutoScrollRef.current && turns.length > 0 && (
+      {showScrollButton && turns.length > 0 && (
         <div className="absolute bottom-24 right-6 z-10">
           <button
             onClick={scrollToBottom}
