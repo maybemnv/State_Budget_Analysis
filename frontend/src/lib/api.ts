@@ -321,10 +321,11 @@ export function createWebSocketClient({
         console.error('[WS] Session not found on backend')
         onError?.('Session not found. It may have expired or been deleted.')
       } else if (event.code === 1006) {
-        console.error('[WS] Connection lost abnormally')
+        console.warn('[WS] Connection lost - will reconnect')
       } else if (event.code === 4000) {
-        // heartbeat timeout — will reconnect
         console.warn('[WS] Heartbeat timeout detected')
+      } else if (event.code === 1000 || event.code === 1001) {
+        console.log('[WS] Connection closed normally')
       }
 
       if (!closed) {
@@ -402,8 +403,10 @@ export function createWebSocketClient({
 
       if (ws?.readyState === WebSocket.OPEN) {
         ws.send(payload)
+      } else if (ws?.readyState === WebSocket.CONNECTING) {
+        console.warn('[WS] Connection still connecting, will send when ready')
       } else {
-        console.warn('[WS] Not connected (readyState:', ws?.readyState, ')')
+        console.error('[WS] Cannot send message - connection not open (readyState:', ws?.readyState, ')')
       }
     },
     close: () => {

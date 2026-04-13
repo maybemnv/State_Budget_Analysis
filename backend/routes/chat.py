@@ -191,6 +191,11 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                 except json.JSONDecodeError:
                     message = raw
 
+                # Skip empty messages (can happen on reconnect)
+                if not message or not message.strip():
+                    logger.debug(f"Skipping empty message for session {session_id}")
+                    continue
+
                 # Input validation
                 try:
                     message = _validate_message(message)
@@ -243,6 +248,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                     )
 
                 await callback._send({"type": "done"})
+                
+                # Update conversation summary for next message
+                summary = await get_conversation_summary(session_id, db)
 
         except (WebSocketDisconnect, RuntimeError) as e:
             if isinstance(e, RuntimeError) and "accept" not in str(e) and "disconnect" not in str(e).lower():

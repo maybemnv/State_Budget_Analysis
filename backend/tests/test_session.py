@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from backend.session import (
     create_session,
     get_session,
-    get_df,
     delete_session,
     list_sessions,
     _resolve_id,

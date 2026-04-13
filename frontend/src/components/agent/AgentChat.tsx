@@ -164,17 +164,18 @@ export function AgentChat({ sessionId, onChartSpec, onTimelineStep }: AgentChatP
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || !isConnected || isSendingRef.current) return
+    const trimmed = input.trim()
+    if (!trimmed || !isConnected || isSendingRef.current) return
 
     isSendingRef.current = true
     shouldAutoScrollRef.current = true
     setShowScrollButton(false)
     setTurns((prev) => {
-      const trimmed = prev.length >= MAX_TURNS ? prev.slice(-MAX_TURNS + 1) : prev
-      return [...trimmed, { id: uid(), role: "user", content: input.trim(), thinking: false }]
+      const trimmedTurns = prev.length >= MAX_TURNS ? prev.slice(-MAX_TURNS + 1) : prev
+      return [...trimmedTurns, { id: uid(), role: "user", content: trimmed, thinking: false }]
     })
 
-    sendMessage({ message: input.trim() })
+    sendMessage({ message: trimmed })
     setInput("")
 
     setTimeout(() => {
