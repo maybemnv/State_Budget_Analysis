@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     # CORS Configuration
     cors_origins: list[str] = Field(default=["http://localhost:3000", "http://127.0.0.1:3000"], validation_alias="CORS_ORIGINS")
     cors_allow_credentials: bool = Field(default=True, validation_alias="CORS_ALLOW_CREDENTIALS")
+
+    # Authentication
+    jwt_secret_key: str = Field(default="change-me-in-production", validation_alias="JWT_SECRET_KEY")
+    jwt_algorithm: str = Field(default="HS256", validation_alias="JWT_ALGORITHM")
+    jwt_expire_minutes: int = Field(default=1440, validation_alias="JWT_EXPIRE_MINUTES")
     
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(default="INFO", validation_alias="LOG_LEVEL")
     

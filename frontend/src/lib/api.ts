@@ -8,6 +8,13 @@ const getOrigin = () => {
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || getOrigin()
 const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || getOrigin().replace('http', 'ws')
 
+// Auth token helper
+function getAuthHeaders(): Record<string, string> {
+  if (typeof window === 'undefined') return {}
+  const token = localStorage.getItem('datalens_token')
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
 // Maximum upload file size: 100 MB
 export const MAX_UPLOAD_SIZE = 100 * 1024 * 1024
 
@@ -119,6 +126,9 @@ export const api = {
       })
 
       xhr.open('POST', `${API_BASE_URL}/upload`)
+      // Add auth header
+      const token = typeof window !== 'undefined' ? localStorage.getItem('datalens_token') : null
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
       xhr.send(formData)
     })
   },
@@ -127,7 +137,9 @@ export const api = {
    * Get session information
    */
   async getSessionInfo(sessionId: string): Promise<SessionInfo> {
-    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}`)
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}`, {
+      headers: getAuthHeaders(),
+    })
 
     if (!res.ok) {
       if (res.status === 404) {
@@ -145,6 +157,7 @@ export const api = {
   async deleteSession(sessionId: string): Promise<void> {
     const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}`, {
       method: 'DELETE',
+      headers: getAuthHeaders(),
     })
 
     if (!res.ok && res.status !== 404) {
@@ -160,6 +173,7 @@ export const api = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...getAuthHeaders(),
       },
       body: JSON.stringify({ message }),
     })
@@ -241,7 +255,8 @@ export function createWebSocketClient({
   maxReconnectAttempts = 10,
   reconnectBaseDelay = 1000,
 }: CreateWebSocketClientOptions): WebSocketClient {
-  const wsUrl = `${WS_BASE_URL}/ws/${sessionId}`
+  const token = typeof window !== 'undefined' ? localStorage.getItem('datalens_token') : ''
+  const wsUrl = `${WS_BASE_URL}/ws/${sessionId}?token=${encodeURIComponent(token)}`
   console.log('[WS] Connecting:', wsUrl)
 
   let ws: WebSocket | null = null

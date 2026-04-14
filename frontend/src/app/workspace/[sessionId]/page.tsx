@@ -6,6 +6,7 @@ import { ThreePanelLayout } from "@/components/layout/ThreePanelLayout"
 import { AutoInsightModal } from "@/components/agent/AutoInsightModal"
 import { BackendStatusIndicator } from "@/components/ui/BackendStatusIndicator"
 import { api, type SessionInfo } from "@/lib/api"
+import { useAuthStore } from "@/lib/stores/auth"
 import { useWorkspaceStore } from "@/lib/store"
 import { AlertCircle, Sparkles } from "lucide-react"
 
@@ -27,6 +28,7 @@ const AUTO_INSIGHTS = [
 export default function WorkspacePage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const router = useRouter()
+  const { token, checkAuth } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null)
@@ -34,8 +36,21 @@ export default function WorkspacePage() {
   const setAutoInsightOpen = useWorkspaceStore((s) => s.setAutoInsightOpen)
   const resetWorkspace = useWorkspaceStore((s) => s.reset)
 
+  // Check auth on mount
+  useEffect(() => {
+    checkAuth().then(() => {
+      const t = localStorage.getItem("datalens_token")
+      if (!t) {
+        router.push(`/login?redirect=/workspace/${sessionId}`)
+      }
+    })
+  }, [])
+
   // Fetch session info on mount
   useEffect(() => {
+    const t = localStorage.getItem("datalens_token")
+    if (!t) return
+
     let cancelled = false
 
     api.getSessionInfo(sessionId)

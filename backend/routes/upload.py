@@ -6,7 +6,9 @@ import pandas as pd
 from fastapi import APIRouter, File, UploadFile, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import get_current_user
 from ..db import get_db_dependency
+from ..db.models import User
 from ..session import create_session, get_session, delete_session
 from ..schemas import UploadResponse, SessionInfo
 from ..config import settings
@@ -46,10 +48,11 @@ def _clean(df: pd.DataFrame) -> pd.DataFrame:
 async def upload_file(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db_dependency),
+    current_user: User = Depends(get_current_user),
 ) -> UploadResponse:
     filename = file.filename or "unknown"
     suffix = Path(filename).suffix.lower()
-    logger.info(f"Upload request: filename={filename}, size={file.size or 'unknown'}")
+    logger.info(f"Upload request: filename={filename}, size={file.size or 'unknown'}, user_id={current_user.id}")
 
     if suffix not in _ALLOWED:
         raise HTTPException(
@@ -71,7 +74,7 @@ async def upload_file(
 
     df = _clean(df)
 
-    session_id = await create_session(df, filename, db)
+    session_id = await create_session(df, filename, db, user_id=current_user.id)
 
     logger.info(f"Upload success: session_id={session_id}, rows={df.shape[0]}, cols={df.shape[1]}")
 
@@ -88,9 +91,10 @@ async def upload_file(
 async def get_session_info(
     session_id: str,
     db: AsyncSession = Depends(get_db_dependency),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     session = await get_session(session_id, db)
-    if session is None:
+    if session is None or session.get("schema") is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
     schema = session["schema"]
@@ -110,9 +114,18 @@ async def get_session_info(
 async def delete_session_endpoint(
     session_id: str,
     db: AsyncSession = Depends(get_db_dependency),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
-    session = await get_session(session_id, db)
-    if session is None:
+    from sqlalchemy import select
+    from ..db.models import Session as SessionModel
+
+    result = await db.execute(
+        select(SessionModel).where(
+            SessionModel.session_id == session_id,
+            SessionModel.user_id == current_user.id,
+        )
+    )
+    if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
     await delete_session(session_id, db)

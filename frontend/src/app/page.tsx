@@ -1,9 +1,11 @@
 "use client"
 
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Upload, FileText, CheckCircle2, AlertCircle, X } from "lucide-react"
+import Link from "next/link"
+import { Upload, FileText, CheckCircle2, AlertCircle, X, LogOut, Clock, User } from "lucide-react"
 import { api, validateFile, MAX_UPLOAD_SIZE } from "@/lib/api"
+import { useAuthStore } from "@/lib/stores/auth"
 import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -16,11 +18,28 @@ export default function HomePage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const abortRef = useRef<(() => void) | null>(null)
 
+  const { user, token, logout, checkAuth } = useAuthStore()
+
   const [state, setState] = useState<UploadState>("idle")
   const [progress, setProgress] = useState(0)
   const [fileName, setFileName] = useState("")
   const [error, setError] = useState("")
   const [isDragging, setIsDragging] = useState(false)
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    checkAuth().then(() => {
+      const t = localStorage.getItem("datalens_token")
+      if (!t) {
+        router.push("/login?redirect=/")
+      }
+    })
+  }, [])
+
+  const handleLogout = () => {
+    logout()
+    router.push("/login")
+  }
 
   const handleFile = useCallback(async (file: File) => {
     setFileName(file.name)
@@ -98,19 +117,29 @@ export default function HomePage() {
     <div className="flex min-h-screen flex-col bg-background">
       {/* Nav */}
       <nav className="flex items-center justify-between px-6 py-4 sm:px-10 sm:py-5" role="navigation" aria-label="Main navigation">
-        <span className="text-sm font-semibold tracking-tight text-text-primary">
+        <Link href="/" className="text-sm font-semibold tracking-tight text-text-primary">
           DataLens<span className="text-primary"> AI</span>
-        </span>
-        <div className="flex gap-1">
-          {["Terminal", "Archive", "Agents", "Settings"].map((item) => (
-            <button
-              key={item}
-              className="rounded-full px-3 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              aria-label={`Navigate to ${item}`}
-            >
-              {item}
-            </button>
-          ))}
+        </Link>
+        <div className="flex items-center gap-3">
+          {token && user && (
+            <>
+              <Link
+                href="/history"
+                className="flex items-center gap-1 rounded px-2 py-1.5 text-xs font-medium text-text-muted transition-colors hover:text-text-primary"
+              >
+                <Clock className="h-3.5 w-3.5" />
+                History
+              </Link>
+              <span className="text-xs text-text-muted">{user.email}</span>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-1 rounded px-2 py-1.5 text-xs text-text-muted transition-colors hover:text-text-primary"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                Logout
+              </button>
+            </>
+          )}
         </div>
       </nav>
 
@@ -266,13 +295,11 @@ insights = llm.analyze(df.head(100))`}
           </div>
 
           {/* Inline CTA row */}
-          {state === "idle" && (
+          {state === "idle" && token && (
             <div className="mt-6 flex flex-wrap items-center justify-center gap-4 text-xs text-text-muted" aria-label="Upload requirements">
               <span>CSV, XLSX, Parquet</span>
               <span className="h-3 w-px bg-border" aria-hidden="true" />
               <span>Up to {formatFileSize(MAX_UPLOAD_SIZE)}</span>
-              <span className="h-3 w-px bg-border" aria-hidden="true" />
-              <span>No account needed</span>
             </div>
           )}
         </div>

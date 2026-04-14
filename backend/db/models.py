@@ -1,6 +1,6 @@
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, DateTime, JSON, Text, Index
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import Column, String, Integer, DateTime, JSON, Text, Index, ForeignKey
+from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 
@@ -13,10 +13,29 @@ def _utcnow() -> datetime:
     return datetime.utcnow()
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(320), unique=True, nullable=False, index=True)
+    hashed_password = Column(String(128), nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+
+    sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "email": self.email,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 class Session(Base):
     __tablename__ = "sessions"
 
     session_id = Column(String(64), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     filename = Column(String(512), nullable=False)
     file_path = Column(String(1024), nullable=True)
     schema = Column(JSON, nullable=False)
@@ -24,14 +43,18 @@ class Session(Base):
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
     expires_at = Column(DateTime, nullable=True)
 
+    user = relationship("User", back_populates="sessions")
+
     __table_args__ = (
         Index("ix_sessions_created_at", "created_at"),
         Index("ix_sessions_expires_at", "expires_at"),
+        Index("ix_sessions_user_id", "user_id"),
     )
 
     def to_dict(self) -> dict:
         return {
             "session_id": self.session_id,
+            "user_id": self.user_id,
             "filename": self.filename,
             "file_path": self.file_path,
             "schema": self.schema,

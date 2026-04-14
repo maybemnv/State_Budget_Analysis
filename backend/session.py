@@ -77,7 +77,7 @@ async def _load_df_from_redis(session_id: str) -> Optional[pd.DataFrame]:
         return None
 
 
-async def create_session(df: pd.DataFrame, filename: str, db: AsyncSession) -> str:
+async def create_session(df: pd.DataFrame, filename: str, db: AsyncSession, user_id: Optional[int] = None) -> str:
     import uuid
     session_id = str(uuid.uuid4())
 
@@ -88,6 +88,7 @@ async def create_session(df: pd.DataFrame, filename: str, db: AsyncSession) -> s
 
     session_record = SessionModel(
         session_id=session_id,
+        user_id=user_id,
         filename=filename,
         schema=schema,
         expires_at=expires_at,

@@ -8,8 +8,9 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, De
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import get_current_user
 from ..db import get_db, get_redis, get_db_dependency
-from ..db.models import Message, ToolRun, Chart
+from ..db.models import Message, ToolRun, Chart, Session as SessionModel, User
 from ..session import get_session as get_session_data, refresh_session_ttl
 from ..agent.analyst_agent import run_agent
 from ..agent.output_parser import parse_output
@@ -50,6 +51,16 @@ async def _run_with_keepalive(ws: WebSocket, coro):
             pass
 
 LLM_CONTEXT_MESSAGES = 10
+
+
+async def _verify_session_ownership(session_id: str, user_id: int, db: AsyncSession) -> bool:
+    result = await db.execute(
+        select(SessionModel).where(
+            SessionModel.session_id == session_id,
+            SessionModel.user_id == user_id,
+        )
+    )
+    return result.scalar_one_or_none() is not None
 
 
 def _validate_message(message: str) -> str:
@@ -157,10 +168,41 @@ async def get_conversation_summary(session_id: str, db: AsyncSession) -> str:
 
 
 @router.websocket("/ws/{session_id}")
-async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
+async def websocket_endpoint(
+    websocket: WebSocket,
+    session_id: str,
+) -> None:
+    from jose import JWTError
+
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.send_text(json.dumps({"type": "error", "message": "Missing token"}))
+        await websocket.close(code=4001, reason="Missing token")
+        return
+
+    from ..auth import jwt
+    from ..config import settings as app_settings
+
+    try:
+        payload = jwt.decode(token, app_settings.jwt_secret_key, algorithms=[app_settings.jwt_algorithm])
+        user_id = int(payload.get("sub"))
+        if user_id is None:
+            await websocket.send_text(json.dumps({"type": "error", "message": "Invalid token"}))
+            await websocket.close(code=4001, reason="Invalid token")
+            return
+    except JWTError:
+        await websocket.send_text(json.dumps({"type": "error", "message": "Invalid token"}))
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+
     await websocket.accept()
 
     async with get_db() as db:
+        if not await _verify_session_ownership(session_id, user_id, db):
+            await websocket.send_text(json.dumps({"type": "error", "message": "Session not found"}))
+            await websocket.close(code=4004, reason="Session not found")
+            return
+
         session = await get_session_data(session_id, db)
         if session is None:
             logger.warning(f"WebSocket rejected: session not found: {session_id}")
@@ -279,7 +321,11 @@ async def chat(
     session_id: str,
     body: ChatRequest,
     db: AsyncSession = Depends(get_db_dependency),
+    current_user: User = Depends(get_current_user),
 ) -> ChatResponse:
+    if not await _verify_session_ownership(session_id, current_user.id, db):
+        raise HTTPException(status_code=404, detail="Session not found")
+
     session = await get_session_data(session_id, db)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -349,7 +395,10 @@ async def chat(
 async def get_messages(
     session_id: str,
     db: AsyncSession = Depends(get_db_dependency),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
+    if not await _verify_session_ownership(session_id, current_user.id, db):
+        raise HTTPException(status_code=404, detail="Session not found")
     result = await db.execute(
         select(Message)
         .where(Message.session_id == session_id)
@@ -367,7 +416,10 @@ async def get_messages(
 async def get_charts(
     session_id: str,
     db: AsyncSession = Depends(get_db_dependency),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
+    if not await _verify_session_ownership(session_id, current_user.id, db):
+        raise HTTPException(status_code=404, detail="Session not found")
     result = await db.execute(
         select(Chart)
         .where(Chart.session_id == session_id)

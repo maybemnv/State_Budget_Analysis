@@ -143,3 +143,35 @@ class ChatResponse(BaseModel):
     chart_spec: Optional[dict[str, Any]] = None
     has_error: bool = False
     steps: list[dict[str, Any]] = []
+
+
+# --- Auth schemas ---
+
+class RegisterRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=320)
+    password: str = Field(..., min_length=6, max_length=128)
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class AuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: dict[str, Any]
+
+
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    created_at: str
+
+
+class SessionHistoryItem(BaseModel):
+    session_id: str
+    filename: str
+    shape: list[int]
+    created_at: str
+    expires_at: Optional[str] = None

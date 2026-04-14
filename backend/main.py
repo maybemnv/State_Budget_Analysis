@@ -7,9 +7,9 @@ from fastapi.responses import JSONResponse
 from .config import settings
 from .db import close_redis, init_db
 from .logger import get_logger, log_request, setup_logging
+from .routes.auth import router as auth_router
 from .routes.chat import router as chat_router
 from .routes.upload import router as upload_router
-from .session import list_sessions
 from .tasks.cleanup import cleanup_expired_sessions
 
 
@@ -77,6 +77,7 @@ async def log_requests(request: Request, call_next):
     return response
 
 
+app.include_router(auth_router)
 app.include_router(upload_router)
 app.include_router(chat_router)
 
@@ -86,18 +87,6 @@ async def health_check():
     return {"status": "ok", "version": "2.0.0"}
 
 
-@app.get("/sessions")
-async def get_all_sessions():
-    from .db import get_db
-
-    async with get_db() as db:
-        session_ids = await list_sessions(db)
-        return {
-            "count": len(session_ids),
-            "sessions": session_ids,
-        }
-
-
 @app.get("/")
 async def root():
     return {
@@ -105,6 +94,10 @@ async def root():
         "version": "2.0.0",
         "docs": "/docs",
         "endpoints": {
+            "auth_register": "POST /auth/register",
+            "auth_login": "POST /auth/login",
+            "auth_me": "GET /auth/me",
+            "auth_sessions": "GET /auth/sessions",
             "upload": "POST /upload",
             "session_info": "GET /sessions/{session_id}",
             "delete_session": "DELETE /sessions/{session_id}",
