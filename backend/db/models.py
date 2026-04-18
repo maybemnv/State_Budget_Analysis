@@ -18,6 +18,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     email = Column(String(320), unique=True, nullable=False, index=True)
+    username = Column(String(150), nullable=True)
     hashed_password = Column(String(128), nullable=False)
     created_at = Column(DateTime, default=_utcnow, nullable=False)
 
@@ -27,6 +28,7 @@ class User(Base):
         return {
             "id": self.id,
             "email": self.email,
+            "username": self.username,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
