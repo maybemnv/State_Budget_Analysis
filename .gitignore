@@ -4,7 +4,6 @@ __pycache__
 *.pyc
 .pytest_cache/
 .qwen/
-gha-creds-*.json
+.gha-creds-*.json
 .ruff_cache/
 .github/
-.qwen/
