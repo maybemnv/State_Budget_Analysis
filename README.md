@@ -5,26 +5,31 @@ An autonomous data analysis platform powered by a LangChain ReAct agent and Goog
 ## Architecture
 
 
+```mermaid
+graph TD
+    Client[Frontend<br/>Next.js] <-->|HTTP / WebSocket| API[Backend<br/>FastAPI]
+    API <--> External[External Services<br/>Google Gemini<br/>PostgreSQL<br/>Redis]
+    
+    subgraph Frontend Features
+        Client -.-> UI[React UI]
+        Client -.-> Vega[Vega-Lite]
+        Client -.-> WS[WebSocket]
+    end
+    
+    subgraph Backend Features
+        API -.-> Agent[ReAct Agent]
+        API -.-> Registry[Tool Registry]
+        API -.-> Parser[File Parser]
+    end
+    
+    Browser[User Browser<br/>- Upload files<br/>- View charts<br/>- Chat UI] -->|Interacts with| Client
+    
+    API --> DB[(Database)]
+    DB -.-> Msgs[Messages]
+    DB -.-> Sess[Sessions]
+    DB -.-> Chts[Charts]
+    DB -.-> Runs[Tool Runs]
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Frontend      │     │    Backend      │     │   External      │
-│   (Next.js)     │◄───►│   (FastAPI)     │◄───►│   Services      │
-│                 │     │                 │     │                 │
-│ - React UI      │     │ - ReAct Agent   │     │ - Google Gemini │
-│ - Vega-Lite     │     │ - Tool Registry │     │ - PostgreSQL    │
-│ - WebSocket     │     │ - File Parser   │     │ - Redis         │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-         │                       │
-         │                       │
-         ▼                       ▼
-┌─────────────────┐     ┌─────────────────┐
-│  User Browser   │     │   Database      │
-│                 │     │                 │
-│ - Upload files  │     │ - Messages      │
-│ - View charts   │     │ - Sessions      │
-│ - Chat UI       │     │ - Charts        │
-└─────────────────┘     │ - Tool Runs     │
-                        └─────────────────┘
 
 ## Requirements
 

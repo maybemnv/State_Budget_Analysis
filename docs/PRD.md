@@ -82,16 +82,14 @@ Every technology choice is justified by the specific requirements of an agentic 
 
 The system is divided into three bounded contexts that communicate via a defined API surface:
 
-```
-┌─────────────────────┐      WebSocket + REST      ┌──────────────────────────┐      Function Calls      ┌─────────────────────┐
-│   FRONTEND LAYER    │ ◄──────────────────────── ► │      AGENT LAYER         │ ◄──────────────────────► │   ANALYSIS LAYER    │
-│                     │                             │                          │                          │                     │
-│  Next.js 15         │                             │  LangChain ReAct Agent   │                          │  FastAPI Endpoints  │
-│  Custom Design      │                             │  Tool Registry (12)      │                          │  Existing Analyzers │
-│  React Three Fiber  │                             │  Streaming Callbacks     │                          │  New ML Algorithms  │
-│  WebSocket Client   │                             │  Dataset Context Mgr     │                          │                     │
-│  PostFX Pipeline    │                             │  Typewriter Animation    │                          │                     │
-└─────────────────────┘                             └──────────────────────────┘                          └─────────────────────┘
+```mermaid
+graph LR
+    Frontend[FRONTEND LAYER<br/>Next.js 15<br/>Custom Design<br/>React Three Fiber<br/>WebSocket Client<br/>PostFX Pipeline]
+    Agent[AGENT LAYER<br/>LangChain ReAct Agent<br/>Tool Registry 12<br/>Streaming Callbacks<br/>Dataset Context Mgr<br/>Typewriter Animation]
+    Analysis[ANALYSIS LAYER<br/>FastAPI Endpoints<br/>Existing Analyzers<br/>New ML Algorithms]
+    
+    Frontend <-->|WebSocket + REST| Agent
+    Agent <-->|Function Calls| Analysis
 ```
 
 **Communication flow:**
@@ -339,28 +337,22 @@ A toggle where the agent doesn't wait for queries. It:
 
 ### 5.4 Main Workspace Layout
 
-```
-┌──────────────────┬─────────────────────────────────────┬────────────────────────┐
-│   LEFT SIDEBAR   │         CENTER — AGENT CHAT          │   RIGHT — VIZ CANVAS   │
-│    280px fixed   │         Flexible width               │     360px fixed         │
-│                  │                                      │                         │
-│  File info card  │  Message thread (scrollable)         │  Chart gallery (pinned) │
-│  Column browser  │  ├─ User message bubbles             │  3D scene (RTF canvas)  │
-│  Data badges     │  ├─ Agent thought steps (typewriter) │  Depth-of-field + glow  │
-│  Quick stats     │  ├─ Tool call cards (builds itself)  │  Fullscreen toggle      │
-│  Session history │  ├─ Inline chart renders (draws in)  │  Export PNG / SVG       │
-│                  │  └─ Final answer text                │  Chart history tabs     │
-│                  │                                      │                         │
-│                  │  ─────────────────────────────────── │                         │
-│                  │  [ Command input bar — sticky bottom ]│                         │
-│                  │  [ Cmd+K for context suggestions     ]│                         │
-└──────────────────┴─────────────────────────────────────┴────────────────────────┘
-
-┌────────────────────────────────────────────────────────────────────────────────┐
-│  AGENT TIMELINE (bottom scrubber — shows full reasoning chain)                 │
-│  ●────○────●────────○────●                                                       │
-│  desc  stats  anomaly  chart  answer                                            │
-└────────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Main Workspace Layout
+        direction LR
+        Left[LEFT SIDEBAR<br/>280px fixed<br/>- File info card<br/>- Column browser<br/>- Data badges<br/>- Quick stats<br/>- Session history]
+        Center[CENTER — AGENT CHAT<br/>Flexible width<br/>- Message thread<br/>- User messages<br/>- Agent thought steps<br/>- Tool call cards<br/>- Inline charts<br/>- Final answer<br/>- Command input bar<br/>- Cmd+K context]
+        Right[RIGHT — VIZ CANVAS<br/>360px fixed<br/>- Chart gallery<br/>- 3D scene RTF<br/>- Depth-of-field + glow<br/>- Fullscreen toggle<br/>- Export PNG/SVG<br/>- Chart history tabs]
+        
+        Left ~~~ Center ~~~ Right
+    end
+    
+    subgraph Agent Timeline
+        Timeline[Bottom scrubber — shows full reasoning chain<br/>desc --> stats --> anomaly --> chart --> answer]
+    end
+    
+    Center --> Timeline
 ```
 
 ### 5.5 When to Use 3D vs 2D
